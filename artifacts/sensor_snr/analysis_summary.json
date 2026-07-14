@@ -1,0 +1,18 @@
+{
+  "dataset_root": "/home/coder/workspace/Federated-learning-floor-vibration-classification-and-regression-analysis/TestData/20251124_Testing",
+  "output_dir": "/home/coder/workspace/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/sensor_snr",
+  "hdf5_files": [
+    "/home/coder/workspace/Federated-learning-floor-vibration-classification-and-regression-analysis/TestData/20251124_Testing/vib/Data/TestSetup_003.hdf5",
+    "/home/coder/workspace/Federated-learning-floor-vibration-classification-and-regression-analysis/TestData/20251124_Testing/vib/Data/TestSetup_004.hdf5",
+    "/home/coder/workspace/Federated-learning-floor-vibration-classification-and-regression-analysis/TestData/20251124_Testing/vib/Data/TestSetup_005.hdf5",
+    "/home/coder/workspace/Federated-learning-floor-vibration-classification-and-regression-analysis/TestData/20251124_Testing/vib/Data/TestSetup_006.hdf5",
+    "/home/coder/workspace/Federated-learning-floor-vibration-classification-and-regression-analysis/TestData/20251124_Testing/vib/Data/TestSetup_007.hdf5",
+    "/home/coder/workspace/Federated-learning-floor-vibration-classification-and-regression-analysis/TestData/20251124_Testing/vib/Data/TestSetup_008.hdf5"
+  ],
+  "sensor_count": 20,
+  "row_count": 1920,
+  "subject_count": 6,
+  "trial_count": 96,
+  "included_row_count": 1780,
+  "warnings": []
+}

@@ -31,3 +31,9 @@ class SimpleCNN1D(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.features(x)
         return self.head(x)
+
+
+class MaskAwareSimpleCNN1D(SimpleCNN1D):
+    def __init__(self, signal_channels: int, output_dim: int) -> None:
+        super().__init__(in_channels=signal_channels * 2, output_dim=output_dim)
+        self.signal_channels = signal_channels

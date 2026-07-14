@@ -387,5 +387,5 @@ def save_round_history(path: Path, rows: Sequence[dict[str, Any]]) -> None:
         writer.writerows(rows)
 
 
-def create_federated_model(artifact: dict[str, object], task: str) -> nn.Module:
-    return create_model(artifact=artifact, task=task)
+def create_federated_model(artifact: dict[str, object], task: str, mask_aware: bool = False) -> nn.Module:
+    return create_model(artifact=artifact, task=task, mask_aware=mask_aware)

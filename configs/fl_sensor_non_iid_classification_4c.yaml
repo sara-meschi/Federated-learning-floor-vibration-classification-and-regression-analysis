@@ -45,6 +45,7 @@ sensor_non_iid:
 
 training:
   task: classification
+  model_name: mask_aware_simple_cnn1d
   batch_size: 32
   epochs: 15
   learning_rate: 0.001
@@ -52,7 +53,7 @@ training:
   num_workers: 0
 
 federated:
-  result_name: 4c_15r_3e
+  result_name: 4c_maskaware_15r_3e
   num_clients: 4
   num_rounds: 15
   local_epochs: 3
@@ -65,5 +66,5 @@ wandb:
   enabled: false
   project: ENGR859-final-project
   entity: null
-  tags: ["flower", "sensor-non-iid", "classification", "4-clients", "15-rounds", "3-local-epochs", "raw-vibration"]
+  tags: ["flower", "sensor-non-iid", "classification", "mask-aware-simple-cnn1d", "4-clients", "15-rounds", "3-local-epochs", "raw-vibration"]
   watch: false

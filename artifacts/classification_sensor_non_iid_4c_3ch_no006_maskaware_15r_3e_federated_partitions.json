@@ -1,0 +1,74 @@
+{
+  "partition_mode": "sensor_owned_feature_non_iid",
+  "clients": [
+    {
+      "client_id": "0",
+      "sensors": [
+        "1",
+        "2",
+        "4"
+      ],
+      "channel_indices": [
+        0,
+        1,
+        2
+      ],
+      "num_train_windows": 208
+    },
+    {
+      "client_id": "1",
+      "sensors": [
+        "12",
+        "13",
+        "3"
+      ],
+      "channel_indices": [
+        3,
+        4,
+        5
+      ],
+      "num_train_windows": 208
+    },
+    {
+      "client_id": "2",
+      "sensors": [
+        "5",
+        "6",
+        "14"
+      ],
+      "channel_indices": [
+        6,
+        7,
+        8
+      ],
+      "num_train_windows": 208
+    },
+    {
+      "client_id": "3",
+      "sensors": [
+        "7",
+        "8z",
+        "15"
+      ],
+      "channel_indices": [
+        9,
+        10,
+        11
+      ],
+      "num_train_windows": 208
+    }
+  ],
+  "num_global_train": 208,
+  "num_global_val": 0,
+  "num_global_test": 71,
+  "total_client_train_window_views": 832,
+  "client_training_window_indices_are_shared": true,
+  "client_sensor_channels_are_disjoint": true,
+  "split_overlap": {
+    "train_val": 0,
+    "train_test": 0,
+    "val_test": 0,
+    "overlapping_train_test_windows": 0
+  },
+  "split_rule": "All clients share the same global training window ids, but each client loader receives only its owned sensor channels; all other channels are zeroed after normalization. The held-out server test windows come from raw time intervals that were split before resampling/windowing."
+}

@@ -19,6 +19,7 @@ if str(SRC) not in sys.path:
 
 from redo_by_sara.config import load_config
 from redo_by_sara.federated import build_loader, create_federated_model
+from redo_by_sara.sensor_non_iid import build_sensor_masked_loader
 
 
 def _class_names(artifact: dict[str, object]) -> list[str]:
@@ -77,6 +78,13 @@ def _plot_matrix(matrix: list[list[int]], class_names: list[str], title: str, ou
     plt.close(fig)
 
 
+def _uses_mask_aware_classifier(config: object) -> bool:
+    return (
+        getattr(config.training, "task", None) == "classification"
+        and getattr(config.training, "model_name", "simple_cnn1d") == "mask_aware_simple_cnn1d"
+    )
+
+
 def _evaluate(
     artifact: dict[str, object],
     model_path: Path,
@@ -88,21 +96,35 @@ def _evaluate(
     if indices_key not in artifact:
         raise KeyError(f"Artifact does not contain {indices_key}.")
 
-    model = create_federated_model(artifact, "classification")
+    mask_as_input = _uses_mask_aware_classifier(config)
+    model = create_federated_model(artifact, "classification", mask_aware=mask_as_input)
     model.load_state_dict(torch.load(model_path, map_location="cpu", weights_only=False))
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
     model.eval()
 
-    loader = build_loader(
-        artifact=artifact,
-        indices=artifact[indices_key],
-        task="classification",
-        batch_size=config.training.batch_size,
-        num_workers=config.training.num_workers,
-        shuffle=False,
-        seed=config.seed,
-    )
+    if mask_as_input:
+        loader = build_sensor_masked_loader(
+            artifact=artifact,
+            indices=artifact[indices_key],
+            task="classification",
+            batch_size=config.training.batch_size,
+            num_workers=config.training.num_workers,
+            shuffle=False,
+            seed=config.seed,
+            channel_indices=None,
+            include_channel_mask=True,
+        )
+    else:
+        loader = build_loader(
+            artifact=artifact,
+            indices=artifact[indices_key],
+            task="classification",
+            batch_size=config.training.batch_size,
+            num_workers=config.training.num_workers,
+            shuffle=False,
+            seed=config.seed,
+        )
 
     y_true: list[int] = []
     y_pred: list[int] = []

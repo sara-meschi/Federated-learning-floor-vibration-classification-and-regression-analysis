@@ -1,0 +1,18 @@
+{
+  "hdf5_path": "/home/coder/workspace/Federated-learning-floor-vibration-classification-and-regression-analysis/TestData/20251124_Testing/vib/Data/TestSetup_003.hdf5",
+  "output_dir": "/home/coder/workspace/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/frequency_domain_subject003_trial01_per_sensor",
+  "trial_number": 1,
+  "run_index": 0,
+  "sensor_count": 20,
+  "sample_count": 49548,
+  "fs_hz": 1651.6129032258063,
+  "duration_s": 29.999765625000002,
+  "max_plotted_frequency_hz": 200.0,
+  "walking_window_mode": "per_sensor_strongest_post_stomp",
+  "sensor_walking_start_s_min": 11.457890625000001,
+  "sensor_walking_start_s_max": 27.99142578125,
+  "sensor_walking_end_s_min": 13.457753906250002,
+  "sensor_walking_end_s_max": 29.9912890625,
+  "stomp_sample": 16590,
+  "stomp_time_s": 10.044726562500001
+}

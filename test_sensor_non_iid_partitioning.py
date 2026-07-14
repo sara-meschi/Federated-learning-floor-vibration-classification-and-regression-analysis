@@ -15,6 +15,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+from redo_by_sara.federated import create_federated_model
 from redo_by_sara.sensor_non_iid import (
     build_sensor_client_partitions,
     build_sensor_masked_loader,
@@ -118,6 +119,37 @@ def test_masked_loader() -> None:
     print("✓ Masked loader exposes only the owned sensor channels")
 
 
+def test_mask_aware_loader_and_model() -> None:
+    artifact = _synthetic_artifact()
+    loader = build_sensor_masked_loader(
+        artifact=artifact,
+        indices=[1],
+        task="classification",
+        batch_size=1,
+        num_workers=0,
+        shuffle=False,
+        seed=4601,
+        channel_indices=[0, 1, 2, 3, 4],
+        include_channel_mask=True,
+    )
+    x, y = next(iter(loader))
+    signal = x[:, :20, :]
+    mask = x[:, 20:, :]
+
+    assert y.item() == 0
+    assert x.shape == (1, 40, 4)
+    assert torch.count_nonzero(signal[:, :5, :]).item() > 0
+    assert torch.count_nonzero(signal[:, 5:, :]).item() == 0
+    assert torch.count_nonzero(mask[:, :5, :]).item() == 5 * 4
+    assert torch.count_nonzero(mask[:, 5:, :]).item() == 0
+
+    model = create_federated_model(artifact, "classification", mask_aware=True)
+    with torch.no_grad():
+        outputs = model(x)
+    assert outputs.shape == (1, 1)
+    print("✓ Mask-aware loader and model use signal-plus-mask channels")
+
+
 def test_overlap_counter() -> None:
     artifact = _synthetic_artifact()
     assert count_train_test_window_overlaps(artifact["metadata"]) == 0
@@ -137,6 +169,7 @@ if __name__ == "__main__":
     try:
         test_sensor_partitions()
         test_masked_loader()
+        test_mask_aware_loader_and_model()
         test_overlap_counter()
     except Exception as exc:
         print("\n✗ Test FAILED with error:")

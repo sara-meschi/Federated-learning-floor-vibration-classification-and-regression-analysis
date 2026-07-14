@@ -509,6 +509,7 @@ class SensorMaskedIndexedArtifactDataset(Dataset):
         indices: Sequence[int] | torch.Tensor,
         task: str,
         channel_indices: Sequence[int] | None = None,
+        include_channel_mask: bool = False,
     ) -> None:
         self.indices = _as_index_list(indices)
         self.samples = artifact["samples"]
@@ -521,6 +522,7 @@ class SensorMaskedIndexedArtifactDataset(Dataset):
         else:
             raise ValueError(f"Unsupported task: {task}")
         self.task = task
+        self.include_channel_mask = include_channel_mask
 
         num_channels = int(self.samples.shape[1])
         self.channel_mask: torch.Tensor | None = None
@@ -539,9 +541,18 @@ class SensorMaskedIndexedArtifactDataset(Dataset):
         item_index = self.indices[index]
         x = self.samples[item_index]
         x = (x - self.mean.squeeze(0)) / self.std.squeeze(0)
-        if self.channel_mask is not None:
+        active_mask = self.channel_mask
+        if active_mask is not None:
             x = x.clone()
-            x[~self.channel_mask] = 0.0
+            x[~active_mask] = 0.0
+        elif self.include_channel_mask:
+            active_mask = torch.ones(x.shape[0], dtype=torch.bool)
+
+        if self.include_channel_mask:
+            assert active_mask is not None
+            mask_channels = active_mask.to(dtype=x.dtype, device=x.device).unsqueeze(-1).expand_as(x)
+            x = torch.cat((x, mask_channels), dim=0)
+
         y = self.targets[item_index]
         if self.task == "regression":
             y = y.unsqueeze(0)
@@ -557,12 +568,14 @@ def build_sensor_masked_loader(
     shuffle: bool,
     seed: int,
     channel_indices: Sequence[int] | None = None,
+    include_channel_mask: bool = False,
 ) -> DataLoader:
     dataset = SensorMaskedIndexedArtifactDataset(
         artifact=artifact,
         indices=indices,
         task=task,
         channel_indices=channel_indices,
+        include_channel_mask=include_channel_mask,
     )
     generator = torch.Generator()
     generator.manual_seed(seed)

@@ -8,7 +8,7 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader, Dataset
 
-from .models import SimpleCNN1D
+from .models import MaskAwareSimpleCNN1D, SimpleCNN1D
 
 
 class ArtifactDataset(Dataset):
@@ -54,11 +54,15 @@ class EvalResult:
 MetricLogger = Callable[[dict[str, float]], None]
 
 
-def create_model(artifact: dict[str, object], task: str) -> nn.Module:
+def create_model(artifact: dict[str, object], task: str, mask_aware: bool = False) -> nn.Module:
     in_channels = int(artifact["samples"].shape[1])
     if task == "regression":
+        if mask_aware:
+            raise ValueError("Mask-aware model is currently implemented for classification only.")
         return SimpleCNN1D(in_channels=in_channels, output_dim=1)
     num_classes = len(artifact["subject_to_class"])
+    if mask_aware:
+        return MaskAwareSimpleCNN1D(signal_channels=in_channels, output_dim=num_classes)
     return SimpleCNN1D(in_channels=in_channels, output_dim=num_classes)
 
 

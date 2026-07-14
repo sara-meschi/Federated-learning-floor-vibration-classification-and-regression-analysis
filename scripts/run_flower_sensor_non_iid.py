@@ -52,6 +52,8 @@ def _build_wandb_config(
         "seed": config.seed,
         "task": config.training.task,
         "partition_mode": "sensor_owned_feature_non_iid",
+        "model_name": _model_name_for_config(config),
+        "mask_as_input": _uses_mask_aware_classifier(config),
         "artifact_name": config.artifact_name,
         "dataset_root": str(config.data.dataset_root),
         "selected_sensors": config.data.selected_sensors,
@@ -153,6 +155,21 @@ def _result_stem(config: ExperimentConfig) -> str:
         raise ValueError("Missing federated config.")
     suffix = f"_{federated.result_name}" if federated.result_name else ""
     return f"{config.training.task}_sensor_non_iid{suffix}"
+
+
+def _uses_mask_aware_classifier(config: ExperimentConfig) -> bool:
+    model_name = _model_name_for_config(config)
+    if model_name == "mask_aware_simple_cnn1d":
+        if config.training.task != "classification":
+            raise ValueError("mask_aware_simple_cnn1d is currently supported for classification only.")
+        return True
+    if model_name == "simple_cnn1d":
+        return False
+    raise ValueError(f"Unsupported model_name for sensor non-IID FL: {model_name}")
+
+
+def _model_name_for_config(config: ExperimentConfig) -> str:
+    return config.training.model_name
 
 
 def _score_row_for_result(
@@ -318,6 +335,7 @@ def main() -> None:
             self.partition = partition
             self.experiment = experiment
             self.task = experiment.training.task
+            self.mask_as_input = _uses_mask_aware_classifier(experiment)
             self.local_epochs = experiment.federated.local_epochs if experiment.federated else 1
             self.device = torch.device(
                 "cuda"
@@ -336,10 +354,11 @@ def main() -> None:
                 shuffle=True,
                 seed=experiment.seed + int(partition.client_id),
                 channel_indices=self.partition.channel_indices,
+                include_channel_mask=self.mask_as_input,
             )
 
         def get_parameters(self, config: dict[str, Any]) -> list[Any]:
-            model = create_federated_model(self.artifact, self.task)
+            model = create_federated_model(self.artifact, self.task, mask_aware=self.mask_as_input)
             return get_parameters(model)
 
         def fit(
@@ -347,7 +366,7 @@ def main() -> None:
             parameters: list[Any],
             config: dict[str, Any],
         ) -> tuple[list[Any], int, dict[str, float]]:
-            model = create_federated_model(self.artifact, self.task).to(self.device)
+            model = create_federated_model(self.artifact, self.task, mask_aware=self.mask_as_input).to(self.device)
             set_parameters(model, parameters)
             train_result = train_local_model(
                 model=model,
@@ -432,7 +451,9 @@ def main() -> None:
             return aggregated_parameters, aggregated_metrics
 
     server_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    initial_model = create_federated_model(artifact, config.training.task)
+    mask_as_input = _uses_mask_aware_classifier(config)
+    model_name = _model_name_for_config(config)
+    initial_model = create_federated_model(artifact, config.training.task, mask_aware=mask_as_input)
     initial_parameters = ndarrays_to_parameters(get_parameters(initial_model))
     strategy = TrackingFedAvg(
         fraction_fit=config.federated.fraction_fit,
@@ -476,7 +497,7 @@ def main() -> None:
         )
 
         final_parameters = parameters_to_ndarrays(strategy.latest_parameters)
-        final_model = create_federated_model(artifact, config.training.task).to(server_device)
+        final_model = create_federated_model(artifact, config.training.task, mask_aware=mask_as_input).to(server_device)
         set_parameters(final_model, _coerce_ndarrays(final_parameters, parameters_to_ndarrays))
 
         test_loader = build_sensor_masked_loader(
@@ -488,6 +509,7 @@ def main() -> None:
             shuffle=False,
             seed=config.seed,
             channel_indices=None,
+            include_channel_mask=mask_as_input,
         )
         test_result = evaluate_model(
             model=final_model,
@@ -514,6 +536,7 @@ def main() -> None:
                 shuffle=False,
                 seed=config.seed,
                 channel_indices=partition.channel_indices,
+                include_channel_mask=mask_as_input,
             )
             masked_result = evaluate_model(
                 model=final_model,
@@ -556,6 +579,8 @@ def main() -> None:
         summary = {
             "task": config.training.task,
             "partition_mode": "sensor_owned_feature_non_iid",
+            "model_name": model_name,
+            "mask_as_input": mask_as_input,
             "result_name": config.federated.result_name,
             "model_path": str(model_path),
             "history_path": str(history_path),
