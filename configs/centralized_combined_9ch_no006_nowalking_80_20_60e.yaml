@@ -1,0 +1,40 @@
+seed: 4601
+output_dir: artifacts/centralized_combined_9ch_no006_nowalking_80_20_60e
+artifact_name: raw_windows_combined.pt
+
+data:
+  sources:
+    - id: test_2
+      root: TestData/Test_2
+      hdf5_glob: data/*.hdf5
+      run_parameters: runPeramiters.csv
+      sample_rate_override: 1706.667
+      annotation_time_scale: 1.0
+      direction_mode: single_direction_unknown
+
+    - id: testing_20251124
+      root: TestData/20251124_Testing
+      hdf5_glob: vib/Data/*.hdf5
+      run_parameters: runPeramiters.csv
+      sample_rate_override: null
+      annotation_time_scale: 1.0
+      direction_mode: alternating_north_south
+
+  selected_channels: [1, 2, 3, 4, 5, 6, 7, 8, 10]
+  excluded_subjects: [6]
+  target_sample_rate: 400.0
+  window_seconds: 5.0
+  step_seconds: 1.0
+  train_ratio: 0.8
+  test_ratio: 0.2
+  timing_assumption: >-
+    Test_2 runPeramiters.csv times are treated as real elapsed seconds while the
+    HDF5 sampling-rate metadata is overridden from 1652 Hz to 1706.667 Hz.
+
+training:
+  batch_size: 32
+  epochs: 60
+  learning_rate: 0.001
+  minimum_learning_rate: 0.00001
+  weight_decay: 0.0001
+  num_workers: 0

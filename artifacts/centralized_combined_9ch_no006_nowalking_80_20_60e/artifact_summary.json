@@ -1,0 +1,115 @@
+{
+  "experiment": "combined_centralized_9ch_no006_nowalking_80_20",
+  "num_recorded_runs": 161,
+  "num_raw_skip_flags": 7,
+  "run_status_counts": {
+    "excluded": 15,
+    "skipped": 6,
+    "test": 28,
+    "train": 112
+  },
+  "num_usable_runs": 140,
+  "num_train_runs": 112,
+  "num_test_runs": 28,
+  "num_examples": 1549,
+  "num_train": 1242,
+  "num_test": 307,
+  "sample_shape": [
+    9,
+    2000
+  ],
+  "selected_channels_one_based": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    10
+  ],
+  "selected_channels_zero_based": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    9
+  ],
+  "subjects": [
+    "001",
+    "002",
+    "003",
+    "004",
+    "005",
+    "007",
+    "008"
+  ],
+  "excluded_subjects": [
+    "006"
+  ],
+  "class_names": [
+    "no_walking",
+    "subject_001_walking",
+    "subject_002_walking",
+    "subject_003_walking",
+    "subject_004_walking",
+    "subject_005_walking",
+    "subject_007_walking",
+    "subject_008_walking"
+  ],
+  "class_window_counts": {
+    "no_walking": {
+      "all": 345,
+      "train": 276,
+      "test": 69
+    },
+    "subject_001_walking": {
+      "all": 188,
+      "train": 156,
+      "test": 32
+    },
+    "subject_002_walking": {
+      "all": 194,
+      "train": 151,
+      "test": 43
+    },
+    "subject_003_walking": {
+      "all": 294,
+      "train": 238,
+      "test": 56
+    },
+    "subject_004_walking": {
+      "all": 127,
+      "train": 102,
+      "test": 25
+    },
+    "subject_005_walking": {
+      "all": 134,
+      "train": 109,
+      "test": 25
+    },
+    "subject_007_walking": {
+      "all": 125,
+      "train": 98,
+      "test": 27
+    },
+    "subject_008_walking": {
+      "all": 142,
+      "train": 112,
+      "test": 30
+    }
+  },
+  "target_sample_rate": 400.0,
+  "window_seconds": 5.0,
+  "step_seconds": 1.0,
+  "train_ratio": 0.8,
+  "test_ratio": 0.2,
+  "split_seed": 4601,
+  "timing_assumption": "Test_2 runPeramiters.csv times are treated as real elapsed seconds while the HDF5 sampling-rate metadata is overridden from 1652 Hz to 1706.667 Hz.",
+  "train_test_run_overlap": 0
+}

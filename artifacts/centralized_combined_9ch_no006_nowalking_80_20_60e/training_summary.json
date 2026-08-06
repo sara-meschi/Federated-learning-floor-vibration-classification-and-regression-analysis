@@ -1,0 +1,72 @@
+{
+  "experiment": "combined_centralized_9ch_no006_nowalking_80_20",
+  "device": "cpu",
+  "epochs": 60,
+  "batch_size": 32,
+  "initial_learning_rate": 0.001,
+  "minimum_learning_rate": 1e-05,
+  "weight_decay": 0.0001,
+  "test_evaluation_policy": "Test set evaluated once after the final epoch; no validation set.",
+  "final_train_loss": 0.0010423833455016085,
+  "final_train_accuracy": 1.0,
+  "test_loss": 0.009090896758041572,
+  "test_accuracy": 0.996742671009772,
+  "test_balanced_accuracy": 0.997093023255814,
+  "test_macro_f1": 0.9974232170744404,
+  "per_class": {
+    "no_walking": {
+      "support": 69,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "subject_001_walking": {
+      "support": 32,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "subject_002_walking": {
+      "support": 43,
+      "precision": 1.0,
+      "recall": 0.9767441860465116,
+      "f1": 0.988235294117647
+    },
+    "subject_003_walking": {
+      "support": 56,
+      "precision": 0.9824561403508771,
+      "recall": 1.0,
+      "f1": 0.9911504424778761
+    },
+    "subject_004_walking": {
+      "support": 25,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "subject_005_walking": {
+      "support": 25,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "subject_007_walking": {
+      "support": 27,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "subject_008_walking": {
+      "support": 30,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    }
+  },
+  "model_path": "/home/coder/workspace/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/centralized_combined_9ch_no006_nowalking_80_20_60e/combined_centralized_cnn_final.pt",
+  "history_path": "/home/coder/workspace/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/centralized_combined_9ch_no006_nowalking_80_20_60e/training_history.csv",
+  "loss_accuracy_plot": "/home/coder/workspace/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/centralized_combined_9ch_no006_nowalking_80_20_60e/loss_accuracy_vs_epoch.png",
+  "confusion_matrix_plot": "/home/coder/workspace/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/centralized_combined_9ch_no006_nowalking_80_20_60e/test_confusion_matrix.png",
+  "confusion_matrix_csv": "/home/coder/workspace/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/centralized_combined_9ch_no006_nowalking_80_20_60e/test_confusion_matrix.csv",
+  "test_predictions_path": "/home/coder/workspace/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/centralized_combined_9ch_no006_nowalking_80_20_60e/test_predictions.csv"
+}
