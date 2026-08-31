@@ -1,0 +1,217 @@
+{
+  "experiment": "combined_residual_run_level_run_balanced_1d_cnn",
+  "method": {
+    "architecture": "Unchanged SimpleCNN1D with a scalar residual output",
+    "baseline": "Mean speed of unique training runs in the same source/subject stratum",
+    "prediction": "source_subject_train_mean + predicted_residual",
+    "train_residual_scale_mps": 0.03161902032795417,
+    "aggregation": "Mean residual prediction over every walking window in a run",
+    "optimization_unit": "run",
+    "run_balance": "Every training run appears exactly once per epoch and contributes one MSE term",
+    "final_layer_initialization": "zeros, so epoch 0 exactly reproduces the source/subject mean"
+  },
+  "setup_audit": {
+    "num_source_subject_strata": 8,
+    "num_train_runs": 112,
+    "num_test_runs": 28,
+    "num_train_windows": 966,
+    "num_test_windows": 238,
+    "train_test_run_overlap": 0,
+    "minimum_windows_per_train_run": 6,
+    "maximum_windows_per_train_run": 11,
+    "train_residual_mean_mps": -2.973811673103098e-17,
+    "train_residual_std_mps": 0.03161902032795416,
+    "train_residual_scale_mps": 0.03161902032795417,
+    "maximum_absolute_group_residual_mean_mps": 2.3510605227356256e-16,
+    "all_test_strata_have_train_means": true,
+    "loss_weighting": "One MSE term per run after averaging its window predictions.",
+    "group_residual_means_mps": {
+      "test_2:001": 1.3061447348531254e-16,
+      "test_2:002": -2.4671622769447922e-17,
+      "test_2:003": -2.3510605227356256e-16,
+      "testing_20251124:003": -1.850371707708594e-17,
+      "testing_20251124:004": -1.295260195396016e-16,
+      "testing_20251124:005": 1.1956247957501685e-16,
+      "testing_20251124:007": -2.0185873175002847e-17,
+      "testing_20251124:008": -5.551115123125783e-17
+    }
+  },
+  "device": "cpu",
+  "epochs": 60,
+  "run_batch_size": 4,
+  "initial_learning_rate": 0.001,
+  "minimum_learning_rate": 1e-05,
+  "weight_decay": 0.0001,
+  "test_evaluation_policy": "Same held-out runs as the original CNN; this residual model evaluated them once after epoch 60. No validation set. Because prior test results motivated this design, the comparison is exploratory rather than a pristine final test.",
+  "epoch_0_train_source_subject_baseline_metrics": {
+    "mse": 0.0009997622946850931,
+    "rmse_mps": 0.03161901792727113,
+    "mae_mps": 0.0220742044704301,
+    "bias_mps": 1.3836792537144253e-08,
+    "r2": 0.957837006696929,
+    "within_0_10_mps_pct": 98.21428571428571
+  },
+  "final_train_run_metrics": {
+    "mse": 0.0006929159744800525,
+    "rmse_mps": 0.026323297181015386,
+    "mae_mps": 0.019578005586351668,
+    "bias_mps": 0.00014206979955945696,
+    "r2": 0.9707776420986193,
+    "within_0_10_mps_pct": 99.10714285714286
+  },
+  "test_run_metrics": {
+    "mse": 0.0014555442375779088,
+    "rmse_mps": 0.0381515954787989,
+    "mae_mps": 0.023496819393975393,
+    "bias_mps": -0.010559512036187308,
+    "r2": 0.933206908334583,
+    "within_0_10_mps_pct": 96.42857142857143,
+    "median_absolute_error_mps": 0.016707003116607666
+  },
+  "test_window_metrics": {
+    "mse": 0.0016395056385821775,
+    "rmse_mps": 0.04049080931004192,
+    "mae_mps": 0.02674565395387281,
+    "bias_mps": -0.010724813998246393,
+    "r2": 0.9239790316620575,
+    "within_0_10_mps_pct": 96.21848739495799,
+    "median_absolute_error_mps": 0.017614662647247314
+  },
+  "test_source_subject_mean_baseline_run_metrics": {
+    "mse": 0.0016422231281127096,
+    "rmse_mps": 0.04052435228492504,
+    "mae_mps": 0.024130556082128194,
+    "bias_mps": -0.011122433703965349,
+    "r2": 0.9246404491878394,
+    "within_0_10_mps_pct": 96.42857142857143,
+    "median_absolute_error_mps": 0.014166661898294963
+  },
+  "test_source_subject_mean_baseline_window_metrics": {
+    "mse": 0.0017226430639806056,
+    "rmse_mps": 0.04150473544043626,
+    "mae_mps": 0.024685877338994154,
+    "bias_mps": -0.011411654618993827,
+    "r2": 0.9201240967138755,
+    "within_0_10_mps_pct": 96.21848739495799,
+    "median_absolute_error_mps": 0.014999995231628205
+  },
+  "original_cnn_test_run_metrics": {
+    "mse": 0.004088852261559765,
+    "rmse_mps": 0.06394413391046723,
+    "mae_mps": 0.04276937034901845,
+    "bias_mps": -0.019987938880176994,
+    "r2": 0.81236770854427,
+    "within_0_10_mps_pct": 89.28571428571429
+  },
+  "comparison_vs_original_cnn": {
+    "candidate_rmse_mps": 0.0381515954787989,
+    "reference_rmse_mps": 0.06394413391046723,
+    "rmse_improvement_mps": 0.02579253843166833,
+    "rmse_improvement_pct": 40.33605094688171,
+    "candidate_r2": 0.933206908334583,
+    "reference_r2": 0.81236770854427,
+    "r2_improvement": 0.12083919979031299
+  },
+  "comparison_vs_source_subject_mean": {
+    "candidate_rmse_mps": 0.0381515954787989,
+    "reference_rmse_mps": 0.04052435228492504,
+    "rmse_improvement_mps": 0.0023727568061261417,
+    "rmse_improvement_pct": 5.855138138774895,
+    "candidate_r2": 0.933206908334583,
+    "reference_r2": 0.9246404491878394,
+    "r2_improvement": 0.008566459146743588
+  },
+  "test_run_metrics_by_subject": {
+    "001": {
+      "mse": 0.0003708613304276298,
+      "rmse_mps": 0.019257760265088717,
+      "mae_mps": 0.01645997166633606,
+      "bias_mps": -0.0077495276927948,
+      "r2": 0.04293667666969481,
+      "within_0_10_mps_pct": 100.0,
+      "median_absolute_error_mps": 0.01572340726852417
+    },
+    "002": {
+      "mse": 0.00026868512916280454,
+      "rmse_mps": 0.016391617649359827,
+      "mae_mps": 0.011390972137451171,
+      "bias_mps": 0.009649944305419923,
+      "r2": -0.5441703542514447,
+      "within_0_10_mps_pct": 100.0,
+      "median_absolute_error_mps": 0.0036929845809936523
+    },
+    "003": {
+      "mse": 0.0002564402167755426,
+      "rmse_mps": 0.01601375086528895,
+      "mae_mps": 0.013794456209455217,
+      "bias_mps": -0.008947406496320452,
+      "r2": 0.8254783614889141,
+      "within_0_10_mps_pct": 100.0,
+      "median_absolute_error_mps": 0.01390385627746582
+    },
+    "004": {
+      "mse": 0.0008136113514751742,
+      "rmse_mps": 0.02852387336031301,
+      "mae_mps": 0.017310380935668945,
+      "bias_mps": 0.017222007115681965,
+      "r2": -1.81635235763886,
+      "within_0_10_mps_pct": 100.0,
+      "median_absolute_error_mps": 0.002454996109008789
+    },
+    "005": {
+      "mse": 0.0006146736109921372,
+      "rmse_mps": 0.02479261202439423,
+      "mae_mps": 0.018048445383707683,
+      "bias_mps": -0.018048445383707683,
+      "r2": -7.510881616178729,
+      "within_0_10_mps_pct": 100.0,
+      "median_absolute_error_mps": 0.009338021278381348
+    },
+    "007": {
+      "mse": 0.00881009764433808,
+      "rmse_mps": 0.09386212039123173,
+      "mae_mps": 0.07035414377848308,
+      "bias_mps": -0.05918169021606445,
+      "r2": -0.3659059349657048,
+      "within_0_10_mps_pct": 66.66666666666666,
+      "median_absolute_error_mps": 0.036850690841674805
+    },
+    "008": {
+      "mse": 0.0018060461156039764,
+      "rmse_mps": 0.04249760129235504,
+      "mae_mps": 0.04047203063964844,
+      "bias_mps": -0.02342057228088379,
+      "r2": -0.7200413419142899,
+      "within_0_10_mps_pct": 100.0,
+      "median_absolute_error_mps": 0.038662075996398926
+    }
+  },
+  "test_run_metrics_by_source": {
+    "test_2": {
+      "mse": 0.00033160073468580393,
+      "rmse_mps": 0.018209907596849685,
+      "mae_mps": 0.015151234773489146,
+      "bias_mps": -0.0043784379959106445,
+      "r2": 0.9622762470845828,
+      "within_0_10_mps_pct": 100.0,
+      "median_absolute_error_mps": 0.01402592658996582
+    },
+    "testing_20251124": {
+      "mse": 0.0024296286067510666,
+      "rmse_mps": 0.04929126298595996,
+      "mae_mps": 0.03072965939839681,
+      "bias_mps": -0.01591644287109375,
+      "r2": 0.7323083584443899,
+      "within_0_10_mps_pct": 93.33333333333333,
+      "median_absolute_error_mps": 0.01678323745727539
+    }
+  },
+  "model_path": "/home/coder/workspace/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/centralized_combined_residual_runbalanced_9ch_no006_60e/residual_run_balanced_1d_cnn_final.pt",
+  "history_path": "/home/coder/workspace/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/centralized_combined_residual_runbalanced_9ch_no006_60e/training_history.csv",
+  "train_source_subject_means_path": "/home/coder/workspace/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/centralized_combined_residual_runbalanced_9ch_no006_60e/train_source_subject_means.csv",
+  "test_run_predictions_path": "/home/coder/workspace/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/centralized_combined_residual_runbalanced_9ch_no006_60e/test_run_predictions.csv",
+  "test_window_predictions_path": "/home/coder/workspace/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/centralized_combined_residual_runbalanced_9ch_no006_60e/test_window_predictions.csv",
+  "epoch_metrics_plot": "/home/coder/workspace/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/centralized_combined_residual_runbalanced_9ch_no006_60e/run_loss_rmse_r2_accuracy_vs_epoch.png",
+  "actual_vs_predicted_plot": "/home/coder/workspace/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/centralized_combined_residual_runbalanced_9ch_no006_60e/actual_vs_predicted_speed.png",
+  "rmse_comparison_plot": "/home/coder/workspace/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/centralized_combined_residual_runbalanced_9ch_no006_60e/heldout_run_rmse_comparison.png"
+}

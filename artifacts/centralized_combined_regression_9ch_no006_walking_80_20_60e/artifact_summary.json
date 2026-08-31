@@ -1,0 +1,137 @@
+{
+  "experiment": "combined_centralized_regression_9ch_no006_walking_only_80_20",
+  "target": "Mean APDM left/right gait speed",
+  "target_units": "m/s",
+  "num_recorded_runs": 161,
+  "num_raw_skip_flags": 7,
+  "run_status_counts": {
+    "excluded": 15,
+    "skipped": 6,
+    "test": 28,
+    "train": 112
+  },
+  "num_usable_runs": 140,
+  "num_train_runs": 112,
+  "num_test_runs": 28,
+  "num_examples": 1204,
+  "num_train": 966,
+  "num_test": 238,
+  "sample_shape": [
+    9,
+    2000
+  ],
+  "selected_channels_one_based": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    10
+  ],
+  "selected_channels_zero_based": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    9
+  ],
+  "subjects": [
+    "001",
+    "002",
+    "003",
+    "004",
+    "005",
+    "007",
+    "008"
+  ],
+  "excluded_subjects": [
+    "006"
+  ],
+  "target_sample_rate": 400.0,
+  "window_seconds": 5.0,
+  "step_seconds": 1.0,
+  "train_ratio": 0.8,
+  "test_ratio": 0.2,
+  "split_seed": 4601,
+  "timing_assumption": "Test_2 runPeramiters.csv times are treated as real elapsed seconds while the HDF5 sampling-rate metadata is overridden from 1652 Hz to 1706.667 Hz.",
+  "speed_distribution_all_runs": {
+    "count": 140,
+    "minimum_mps": 1.1150000000000002,
+    "maximum_mps": 1.685,
+    "mean_mps": 1.3706785714285712,
+    "std_mps": 0.15276874530091658
+  },
+  "speed_distribution_train_runs": {
+    "count": 112,
+    "minimum_mps": 1.1150000000000002,
+    "maximum_mps": 1.685,
+    "mean_mps": 1.3690625,
+    "std_mps": 0.1539865069025066
+  },
+  "speed_distribution_test_runs": {
+    "count": 28,
+    "minimum_mps": 1.12,
+    "maximum_mps": 1.6549999999999998,
+    "mean_mps": 1.377142857142857,
+    "std_mps": 0.1476205837093658
+  },
+  "speed_distribution_by_subject": {
+    "001": {
+      "count": 21,
+      "minimum_mps": 1.1150000000000002,
+      "maximum_mps": 1.1749999999999998,
+      "mean_mps": 1.1390476190476189,
+      "std_mps": 0.014360913190476375
+    },
+    "002": {
+      "count": 23,
+      "minimum_mps": 1.22,
+      "maximum_mps": 1.28,
+      "mean_mps": 1.2421739130434784,
+      "std_mps": 0.013418521184357348
+    },
+    "003": {
+      "count": 36,
+      "minimum_mps": 1.26,
+      "maximum_mps": 1.53,
+      "mean_mps": 1.4090277777777775,
+      "std_mps": 0.06043613990132757
+    },
+    "004": {
+      "count": 15,
+      "minimum_mps": 1.44,
+      "maximum_mps": 1.54,
+      "mean_mps": 1.486,
+      "std_mps": 0.02444040370643115
+    },
+    "005": {
+      "count": 16,
+      "minimum_mps": 1.605,
+      "maximum_mps": 1.685,
+      "mean_mps": 1.6471874999999998,
+      "std_mps": 0.022358496008229152
+    },
+    "007": {
+      "count": 14,
+      "minimum_mps": 1.2349999999999999,
+      "maximum_mps": 1.5,
+      "mean_mps": 1.340714285714286,
+      "std_mps": 0.06850070757864851
+    },
+    "008": {
+      "count": 15,
+      "minimum_mps": 1.37,
+      "maximum_mps": 1.47,
+      "mean_mps": 1.4176666666666666,
+      "std_mps": 0.03345976024354559
+    }
+  },
+  "train_test_run_overlap": 0
+}

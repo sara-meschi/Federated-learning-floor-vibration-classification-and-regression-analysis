@@ -1,0 +1,247 @@
+{
+  "experiment": "combined_centralized_regression_9ch_no006_walking_only_80_20",
+  "device": "cpu",
+  "epochs": 60,
+  "batch_size": 32,
+  "initial_learning_rate": 0.001,
+  "minimum_learning_rate": 1e-05,
+  "weight_decay": 0.0001,
+  "test_evaluation_policy": "Test set evaluated once after the final epoch; no validation set.",
+  "final_train": {
+    "mse": 0.001434661864252919,
+    "rmse_mps": 0.037876930561164555,
+    "mae_mps": 0.028159618871305792,
+    "r2": 0.9402684367215677,
+    "within_0_10_mps_pct": 98.75776397515527
+  },
+  "test_window_metrics": {
+    "mse": 0.004867681297809764,
+    "rmse_mps": 0.0697687702185567,
+    "mae_mps": 0.04626315281170757,
+    "bias_mps": -0.020190944190786667,
+    "r2": 0.7742942524186732,
+    "within_0_10_mps_pct": 89.07563025210085
+  },
+  "test_run_metrics": {
+    "mse": 0.004088852261559765,
+    "rmse_mps": 0.06394413391046723,
+    "mae_mps": 0.04276937034901845,
+    "bias_mps": -0.019987938880176994,
+    "r2": 0.81236770854427,
+    "within_0_10_mps_pct": 89.28571428571429
+  },
+  "train_run_mean_baselines": {
+    "window": {
+      "overall_train_run_mean": {
+        "mse": 0.02168566229535072,
+        "rmse_mps": 0.14726052524471966,
+        "mae_mps": 0.12168330815659843,
+        "bias_mps": -0.010916494862371846,
+        "r2": -0.005525695030745403,
+        "within_0_10_mps_pct": 38.655462184873954
+      },
+      "subject_train_run_mean": {
+        "mse": 0.002014995281185062,
+        "rmse_mps": 0.044888698813677616,
+        "mae_mps": 0.029517819368354146,
+        "bias_mps": -0.013541472063212934,
+        "r2": 0.9065682429707635,
+        "within_0_10_mps_pct": 96.21848739495799
+      },
+      "source_subject_train_run_mean": {
+        "mse": 0.0017226430639806056,
+        "rmse_mps": 0.04150473544043626,
+        "mae_mps": 0.024685877338994154,
+        "bias_mps": -0.011411654618993827,
+        "r2": 0.9201240967138755,
+        "within_0_10_mps_pct": 96.21848739495799
+      }
+    },
+    "run": {
+      "overall_train_run_mean": {
+        "mse": 0.021857128906249988,
+        "rmse_mps": 0.1478415669094791,
+        "mae_mps": 0.12133928571428562,
+        "bias_mps": -0.00808035714285682,
+        "r2": -0.002996175694183867,
+        "within_0_10_mps_pct": 39.285714285714285
+      },
+      "subject_train_run_mean": {
+        "mse": 0.0019117908397858273,
+        "rmse_mps": 0.04372403046135874,
+        "mae_mps": 0.028718001488031903,
+        "bias_mps": -0.01151036252456132,
+        "r2": 0.9122703210811898,
+        "within_0_10_mps_pct": 96.42857142857143
+      },
+      "source_subject_train_run_mean": {
+        "mse": 0.001642223360594388,
+        "rmse_mps": 0.04052435515334436,
+        "mae_mps": 0.02413056306438657,
+        "bias_mps": -0.011122431490078513,
+        "r2": 0.9246404339116642,
+        "within_0_10_mps_pct": 96.42857142857143
+      }
+    }
+  },
+  "test_run_mse_skill_vs_source_subject_baseline": -1.4898271207637928,
+  "test_window_metrics_by_subject": {
+    "001": {
+      "mse": 0.003291672361209308,
+      "rmse_mps": 0.05737309788750567,
+      "mae_mps": 0.03963550180196762,
+      "bias_mps": -0.001412227749824524,
+      "r2": -8.576472553264034,
+      "within_0_10_mps_pct": 93.75
+    },
+    "002": {
+      "mse": 0.0012920203206192582,
+      "rmse_mps": 0.035944684177486634,
+      "mae_mps": 0.027295844499454942,
+      "bias_mps": 0.00971205844435581,
+      "r2": -6.695120403876949,
+      "within_0_10_mps_pct": 97.67441860465115
+    },
+    "003": {
+      "mse": 0.0010557895397086878,
+      "rmse_mps": 0.03249291522330195,
+      "mae_mps": 0.024517365864345005,
+      "bias_mps": -0.01733985117503575,
+      "r2": 0.3233528642798954,
+      "within_0_10_mps_pct": 100.0
+    },
+    "004": {
+      "mse": 0.0009407092707402853,
+      "rmse_mps": 0.030670984182779092,
+      "mae_mps": 0.022370753288269044,
+      "bias_mps": 0.018141369819641113,
+      "r2": -2.266357864595117,
+      "within_0_10_mps_pct": 100.0
+    },
+    "005": {
+      "mse": 0.006584178046270495,
+      "rmse_mps": 0.08114294822269212,
+      "mae_mps": 0.06475395679473878,
+      "bias_mps": -0.057943177223205564,
+      "r2": -90.44709173071465,
+      "within_0_10_mps_pct": 80.0
+    },
+    "007": {
+      "mse": 0.021931788220854814,
+      "rmse_mps": 0.1480938493687527,
+      "mae_mps": 0.11707116497887506,
+      "bias_mps": -0.06915550320236771,
+      "r2": -2.400275559321253,
+      "within_0_10_mps_pct": 55.55555555555556
+    },
+    "008": {
+      "mse": 0.005273769347378732,
+      "rmse_mps": 0.07262072257543802,
+      "mae_mps": 0.0618853767712911,
+      "bias_mps": -0.04481988350550334,
+      "r2": -4.022629946621388,
+      "within_0_10_mps_pct": 80.0
+    }
+  },
+  "test_run_metrics_by_subject": {
+    "001": {
+      "mse": 0.001721601560961068,
+      "rmse_mps": 0.04149218674595336,
+      "mae_mps": 0.03794418525364657,
+      "bias_mps": -0.004538400752676808,
+      "r2": -3.4428427379640896,
+      "within_0_10_mps_pct": 100.0
+    },
+    "002": {
+      "mse": 0.0010921053566020705,
+      "rmse_mps": 0.033047017363176216,
+      "mae_mps": 0.02612227996190386,
+      "bias_mps": 0.011614435275395785,
+      "r2": -5.27646756667859,
+      "within_0_10_mps_pct": 100.0
+    },
+    "003": {
+      "mse": 0.0009599156773767356,
+      "rmse_mps": 0.030982505989295566,
+      "mae_mps": 0.021253885249702304,
+      "bias_mps": -0.019929251086955153,
+      "r2": 0.34672405289638786,
+      "within_0_10_mps_pct": 100.0
+    },
+    "004": {
+      "mse": 0.0007786892520436011,
+      "rmse_mps": 0.027905004068152384,
+      "mae_mps": 0.018670305852536817,
+      "bias_mps": 0.018670305852536817,
+      "r2": -1.6954627955355468,
+      "within_0_10_mps_pct": 100.0
+    },
+    "005": {
+      "mse": 0.005961422504988737,
+      "rmse_mps": 0.07721024870435748,
+      "mae_mps": 0.05996326601063758,
+      "bias_mps": -0.0580536190227224,
+      "r2": -81.54277314599747,
+      "within_0_10_mps_pct": 66.66666666666666
+    },
+    "007": {
+      "mse": 0.020352349739262452,
+      "rmse_mps": 0.14266166177099737,
+      "mae_mps": 0.11707114908430298,
+      "bias_mps": -0.06915552227585398,
+      "r2": -2.155403060350772,
+      "within_0_10_mps_pct": 66.66666666666666
+    },
+    "008": {
+      "mse": 0.004714712022099085,
+      "rmse_mps": 0.0686637606172214,
+      "mae_mps": 0.059754289786020896,
+      "bias_mps": -0.04481986602147425,
+      "r2": -3.4902019258086536,
+      "within_0_10_mps_pct": 66.66666666666666
+    }
+  },
+  "test_window_metrics_by_source": {
+    "test_2": {
+      "mse": 0.0020436782040947005,
+      "rmse_mps": 0.045207059228561865,
+      "mae_mps": 0.03320855886033438,
+      "bias_mps": -0.004790307248680337,
+      "r2": 0.7557524241337998,
+      "within_0_10_mps_pct": 97.0873786407767
+    },
+    "testing_20251124": {
+      "mse": 0.007022291065607184,
+      "rmse_mps": 0.08379911136525962,
+      "mae_mps": 0.056223324493125636,
+      "bias_mps": -0.03194105978365298,
+      "r2": 0.1967681231755425,
+      "within_0_10_mps_pct": 82.96296296296296
+    }
+  },
+  "test_run_metrics_by_source": {
+    "test_2": {
+      "mse": 0.0014624733417005096,
+      "rmse_mps": 0.03824229780884655,
+      "mae_mps": 0.032353171661077665,
+      "bias_mps": -0.006847082943415568,
+      "r2": 0.8336252601747595,
+      "within_0_10_mps_pct": 100.0
+    },
+    "testing_20251124": {
+      "mse": 0.006365047325437786,
+      "rmse_mps": 0.07978124670270442,
+      "mae_mps": 0.05179674254523379,
+      "bias_mps": -0.0313766806920369,
+      "r2": 0.2987118241933726,
+      "within_0_10_mps_pct": 80.0
+    }
+  },
+  "model_path": "/home/coder/workspace/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/centralized_combined_regression_9ch_no006_walking_80_20_60e/combined_centralized_speed_regression_final.pt",
+  "history_path": "/home/coder/workspace/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/centralized_combined_regression_9ch_no006_walking_80_20_60e/training_history.csv",
+  "epoch_metrics_plot": "/home/coder/workspace/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/centralized_combined_regression_9ch_no006_walking_80_20_60e/loss_rmse_r2_accuracy_vs_epoch.png",
+  "actual_vs_predicted_plot": "/home/coder/workspace/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/centralized_combined_regression_9ch_no006_walking_80_20_60e/actual_vs_predicted_speed.png",
+  "test_window_predictions_path": "/home/coder/workspace/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/centralized_combined_regression_9ch_no006_walking_80_20_60e/test_window_predictions.csv",
+  "test_run_predictions_path": "/home/coder/workspace/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/centralized_combined_regression_9ch_no006_walking_80_20_60e/test_run_predictions.csv",
+  "test_loss_mse": 0.0048676810340814985
+}

@@ -1,0 +1,46 @@
+seed: 4601
+
+classification_artifact: artifacts/centralized_combined_9ch_no006_nowalking_80_20_60e/raw_windows_combined.pt
+regression_artifact: artifacts/centralized_combined_regression_9ch_no006_walking_80_20_60e/raw_walking_windows_regression.pt
+
+centralized_classification_dir: artifacts/centralized_combined_9ch_no006_nowalking_80_20_60e
+centralized_regression_dir: artifacts/centralized_combined_residual_runbalanced_9ch_no006_60e
+centralized_absolute_regression_summary: artifacts/centralized_combined_regression_9ch_no006_walking_80_20_60e/training_summary.json
+output_dir: artifacts/combined_iid_flower_3clients_60r
+
+federated:
+  framework: flower
+  aggregation: FedAvg
+  num_clients: 3
+  num_rounds: 60
+  local_epochs: 1
+  fraction_fit: 1.0
+  fraction_evaluate: 0.0
+  min_available_clients: 3
+  accept_failures: false
+  client_num_cpus: 4
+  client_num_gpus: 0.0
+
+training:
+  classification_batch_size: 32
+  regression_run_batch_size: 4
+  initial_learning_rate: 0.001
+  minimum_learning_rate: 0.00001
+  weight_decay: 0.0001
+  num_workers: 0
+
+experiment:
+  selected_channels_one_based: [1, 2, 3, 4, 5, 6, 7, 8, 10]
+  excluded_subjects: [6]
+  included_subjects: [1, 2, 3, 4, 5, 7, 8]
+  test2_sample_rate_override_hz: 1706.667
+  target_sample_rate_hz: 400.0
+  window_seconds: 5.0
+  step_seconds: 1.0
+  train_ratio: 0.8
+  test_ratio: 0.2
+  classification_include_no_walking: true
+  regression_include_no_walking: false
+  regression_target_level: run
+  regression_baseline: source_subject_training_mean
+  regression_client_weight: unique_training_runs

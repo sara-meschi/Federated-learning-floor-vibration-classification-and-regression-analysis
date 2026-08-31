@@ -1,0 +1,14 @@
+base_experiment_config: configs/centralized_combined_regression_9ch_no006_walking_80_20_60e.yaml
+artifact_path: artifacts/centralized_combined_regression_9ch_no006_walking_80_20_60e/raw_walking_windows_regression.pt
+baseline_summary_path: artifacts/centralized_combined_regression_9ch_no006_walking_80_20_60e/training_summary.json
+output_dir: artifacts/centralized_combined_residual_runbalanced_9ch_no006_60e
+
+seed: 4601
+
+training:
+  run_batch_size: 4
+  epochs: 60
+  learning_rate: 0.001
+  minimum_learning_rate: 0.00001
+  weight_decay: 0.0001
+  num_workers: 0

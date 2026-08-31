@@ -1,0 +1,218 @@
+{
+  "experiment": "combined_3client_iid_flower_classification",
+  "framework": "Flower",
+  "strategy": "FedAvg",
+  "architecture": "SimpleCNN1D with GroupNorm; 9 inputs and 8 outputs",
+  "rounds": 60,
+  "local_epochs_per_round": 1,
+  "subjects": [
+    "001",
+    "002",
+    "003",
+    "004",
+    "005",
+    "007",
+    "008"
+  ],
+  "classes": [
+    "no_walking",
+    "subject_001_walking",
+    "subject_002_walking",
+    "subject_003_walking",
+    "subject_004_walking",
+    "subject_005_walking",
+    "subject_007_walking",
+    "subject_008_walking"
+  ],
+  "selected_channels_one_based": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    10
+  ],
+  "final_global_train_metrics": {
+    "cross_entropy": 0.016157833954181383,
+    "accuracy": 0.9951690821256038,
+    "balanced_accuracy": 0.9924756599887662,
+    "macro_f1": 0.992899226695393
+  },
+  "test_metrics": {
+    "accuracy": 0.996742671009772,
+    "balanced_accuracy": 0.997093023255814,
+    "macro_f1": 0.9974232170744404,
+    "per_class": {
+      "no_walking": {
+        "support": 69,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "subject_001_walking": {
+        "support": 32,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "subject_002_walking": {
+        "support": 43,
+        "precision": 1.0,
+        "recall": 0.9767441860465116,
+        "f1": 0.988235294117647
+      },
+      "subject_003_walking": {
+        "support": 56,
+        "precision": 0.9824561403508771,
+        "recall": 1.0,
+        "f1": 0.9911504424778761
+      },
+      "subject_004_walking": {
+        "support": 25,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "subject_005_walking": {
+        "support": 25,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "subject_007_walking": {
+        "support": 27,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "subject_008_walking": {
+        "support": 30,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      }
+    },
+    "cross_entropy": 0.028501163967900246
+  },
+  "test_evaluation_policy": "Held-out 20% run split evaluated exactly once after Flower round 60; no validation or best-round selection.",
+  "test_evaluation_count": 1,
+  "test_round": 60,
+  "comparison_vs_centralized": {
+    "accuracy_difference": 0.0,
+    "balanced_accuracy_difference": 0.0,
+    "macro_f1_difference": 0.0
+  },
+  "integrity_audit": {
+    "framework": "Flower",
+    "flower_strategy": "FedAvg",
+    "num_rounds": 60,
+    "local_epochs_per_round": 1,
+    "successful_client_fits": 180,
+    "expected_clients_every_round": [
+      "client_0",
+      "client_1",
+      "client_2"
+    ],
+    "fedavg_num_examples_by_client": {
+      "client_0": 412,
+      "client_1": 418,
+      "client_2": 412
+    },
+    "fedavg_total_weight": 1242,
+    "round_one_parameters_changed": true,
+    "global_train_evaluation_rounds": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39,
+      40,
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      47,
+      48,
+      49,
+      50,
+      51,
+      52,
+      53,
+      54,
+      55,
+      56,
+      57,
+      58,
+      59,
+      60
+    ],
+    "test_evaluations_during_training": 0,
+    "local_optimizer": "Adam recreated independently on every client and round",
+    "client_shuffle_seed": "4601 + 1000*server_round + integer_client_id",
+    "learning_rate_schedule": "round-wise cosine annealing; t=round-1",
+    "round_1_learning_rate": 0.001,
+    "final_round_learning_rate": 1.0678380296485953e-05,
+    "saved_model_reproduces_final_global_train_history": true,
+    "final_test_confusion_total": 307,
+    "final_test_class_support": [
+      69,
+      32,
+      43,
+      56,
+      25,
+      25,
+      27,
+      30
+    ],
+    "test_evaluation_count": 1
+  },
+  "model_path": "/home/coder/workspace/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/combined_iid_flower_3clients_60r/classification/flower_iid_global_classification_model.pt",
+  "global_train_history_path": "/home/coder/workspace/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/combined_iid_flower_3clients_60r/classification/global_train_history.csv",
+  "local_client_fit_history_path": "/home/coder/workspace/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/combined_iid_flower_3clients_60r/classification/local_client_fit_history.csv",
+  "test_predictions_path": "/home/coder/workspace/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/combined_iid_flower_3clients_60r/classification/test_predictions.csv",
+  "test_confusion_matrix_csv": "/home/coder/workspace/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/combined_iid_flower_3clients_60r/classification/test_confusion_matrix.csv",
+  "training_comparison_plot": "/home/coder/workspace/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/combined_iid_flower_3clients_60r/classification/centralized_vs_flower_global_train_loss_accuracy.png",
+  "test_confusion_matrix_plot": "/home/coder/workspace/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/combined_iid_flower_3clients_60r/classification/test_confusion_matrix.png",
+  "test_confusion_comparison_plot": "/home/coder/workspace/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/combined_iid_flower_3clients_60r/classification/centralized_vs_flower_test_confusion_matrices.png",
+  "test_metric_comparison_plot": "/home/coder/workspace/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/combined_iid_flower_3clients_60r/classification/centralized_vs_flower_test_metrics.png"
+}
