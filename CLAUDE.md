@@ -50,7 +50,9 @@ Federated regression previously collapsed to a constant predictor: one distinct 
 
 ## Working agreement
 
-- Do **not** rewrite the preprocessing pipeline, the artifact schema, or the run-splitting logic. They are correct.
+- Do **not** rewrite the preprocessing pipeline, the artifact schema, or the run-splitting logic. They are correct. **Carve-out:** additive, self-contained evaluation splits for specific control experiments — notably the subject-003 cross-session control, which trains on 003's runs from one source and tests on the other — are allowed, provided they are a separate code path that does not modify `assign_run_splits`, the canonical seed-4601 split, or the main artifacts.
+- Split seed and initialization seed must be **separate config keys**. A single `seed: 4601` currently drives both, which makes "3 initialization seeds on the fixed split" impossible.
+- Known traps: `sensor_non_iid.py` must not be reused for the channel work — it slices rather than masks, assumes K=4, pulls in out-of-hallway channels, and splits within runs. `MaskAwareSimpleCNN1D` doubles input channels to 18, which is the wrong shape for the masking scheme. `training.py` currently refuses mask-aware regression.
 - Propose a plan before any change larger than a single function, and wait for approval.
 - One work package per session; commit and `/clear` between them.
 - Append a summary of what changed — and every number that moved — to `CHANGES.md`.

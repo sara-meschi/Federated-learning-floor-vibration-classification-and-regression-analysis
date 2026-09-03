@@ -10,7 +10,9 @@ Before you change code, do this:
 2. **Independently verify the central claim below** (§2, R1) against the artifacts on disk. Do not take my word for it. Report what you find before you start fixing.
 3. Produce a short plan with file-by-file diffs you intend to make, and wait for my approval before executing anything larger than a single function.
 
-Work in the order given: **WP0 → WP1 → WP2 → WP3 → WP4 → WP5 → WP6 → WP7**. WP1 must be fixed before any new federated experiment is run, or every new run will reproduce the same collapse.
+**The authoritative work sequence is `docs/claude_code_sessions.md`.** Follow the session order there. Only two work packages are named in this document — the guardrails in §3 and the figure suite in §4 — and everything else is referenced by its R-number in §2 or by section (notably §1.3, the channel-availability non-IID scheme, which has no R-number but is a required deliverable). There is no WP1–WP6; do not reconstruct one.
+
+**§2 R1 must be fixed before any new federated experiment is run**, or every new run will reproduce the same collapse.
 
 After each work package: run the test suite, write a summary of what changed and what the new numbers are, and stop for review. Append each summary to `CHANGES.md` at the repo root.
 
@@ -107,15 +109,17 @@ Evidence to verify first:
 - `global_train_standardized_mse` is flat across all 60 rounds (1.000000 → 0.999902 → 1.000041). Standardized MSE of exactly 1.0 means "predict zero residual", i.e. the trivial baseline. The centralized run drives the same quantity 1.0000 → 0.6931.
 - Reported test R² 0.9244 vs the source/subject-mean baseline R² 0.9246 — the federated model is fractionally **worse than doing nothing**.
 - `comparison_vs_centralized_residual_cnn` reports `rmse_difference_mps: 0.00243`, which reads as success. It is a collapse.
-- Client fit history shows clients **do** learn locally (round-1 local standardized MSE 0.738 / 1.435), so the failure is at aggregation / optimization budget, not in the data path.
+- Client fit history shows clients **do not learn locally**: per-client `local_online_standardized_mse` is flat across all 60 rounds (client_0 0.7383→0.7383, client_1 0.8365→0.8349, client_2 1.4350→1.4314). The failure is therefore **upstream of aggregation** — FedAvg is faithfully averaging three near-zero updates.
 
-Likely cause: 37 runs at batch size 4 ≈ 9 optimizer steps per local epoch × 1 local epoch × 60 rounds ≈ 540 steps per client, with cosine LR decaying 1e-3 → 1e-5 and a zero-init head with no prior signal to preserve. The centralized run needed roughly 20 full epochs before the loss moved at all. FedAvg over three near-zero updates averages to zero.
+*Corrected diagnosis (verified against artifacts, supersedes an earlier claim that the failure was at aggregation):* each client constructs a **fresh Adam optimizer every round** and takes only ~10 steps with it (37 runs at batch 4, 1 local epoch). Adam's second-moment estimate never becomes useful, so the client replays Adam's warmup 60 times and never leaves it. Centralized training used a **single persistent Adam over ~1680 steps** and needed ~560 of them before the loss moved at all — with a zero-init head the early gradients are tiny, and 10 steps from a cold optimizer cannot move them. Cosine LR decay to 1e-5 compounds this.
 
 **What to build:**
 
 - Parameterize local epochs, LR schedule (including a per-round restart option and a constant option), batch size, and server-side optimizer. Remove the config validator's hard rejection of anything but 3 clients / 60 rounds / 1 local epoch (see WP0-3).
-- Add **FedAdam** and **FedYogi** server strategies alongside FedAvg. Flower provides these; wire them so the strategy is selectable from config.
-- Run a sweep: `local_epochs ∈ {1, 5, 10} × server_optimizer ∈ {FedAvg, FedAdam}` on the regression task, and write a comparison table.
+- **Add client optimizer state persistence across rounds** as a first-class option. Carrying Adam moments between rounds is legitimate and standard in cross-silo FL, where clients are persistent institutions rather than transient devices. Given the corrected diagnosis this may be the highest-value single knob.
+- **Instrument local training directly:** log each client's loss at the *start* and *end* of its local training each round, not only the online average. This measures whether local training does anything, rather than inferring it.
+- Add **FedAdam** and **FedYogi** server strategies alongside FedAvg, selectable from config. Note that server-side adaptivity cannot rescue clients that produce no update — expect these to matter only once the local axis is fixed.
+- Sweep in two stages: first `local_epochs ∈ {1, 5, 10} × client_optimizer_state ∈ {fresh, persistent}` under FedAvg (6 configs, isolating the local axis), then FedAdam at the best local setting. Report the table with `local_epochs` understood as the causal variable.
 - Add a **matched-budget** mode: total gradient steps for FL (clients × local_epochs × steps_per_epoch × rounds) reported alongside the centralized step count, so the comparison is defensible either way. Log both numbers into the run summary.
 
 **Acceptance criteria (assert these in code, and fail the run loudly if violated):**
@@ -258,15 +262,16 @@ Consolidate the existing duplicated plot code while you do this — 3 copies of 
 
 Indicative pacing. If a stage slips, cut from the bottom of the list, never from WP0/WP1.
 
-| Days | Work |
-|---|---|
-| 1–3 | WP0 guardrails + partitioner rewrite (round-robin, K-parameterized). Nothing else runs until this lands. |
-| 4–6 | WP1: fix the regression collapse. Sweep local epochs × server optimizer. Acceptance criteria must pass. |
-| 7–8 | WP2 metrics re-cut (skill score), WP4 local-only baseline, R9 counter fix, channel-mask plumbing (§1.3). |
-| 9–13 | Experiment matrix: K=2 {IID, natural, local-only} and K=3 {IID, channel ρ=0.67/0.33/0.0, local-only}, both tasks, both evaluation protocols, 3 init seeds, ≥3 channel assignments. |
-| 14–15 | WP3 end-to-end path, R4 run-level metrics + source probe + subject-003 control. |
-| 16–17 | WP7 figures and tables. Writing runs in parallel from day 9 using placeholder numbers. |
-| 18–20 | Buffer, then R10 architecture comparison only if genuinely free. |
+| Days | Session (`docs/claude_code_sessions.md`) | Work |
+|---|---|---|
+| 0 | S0 | Orientation and independent verification of R1. No edits. |
+| 1–3 | S1, S2 | Guardrails (§3 items 1, 2, 4, 5 + R9), then the partitioner rewrite (§3 item 3). Nothing else runs until this lands. |
+| 4–6 | S3 | §2 R1: fix the regression collapse. Sweep local epochs × server optimizer. Acceptance criteria must pass. |
+| 7–8 | S4, S5 | §2 R2 metrics re-cut (skill score) and R5 local-only baseline; then §1.3 position-masking and the ρ sweep. |
+| 9–13 | S6 | Experiment matrix: K=2 {IID, natural, local-only} and K=3 {IID, channel ρ=0.67/0.33/0.0, local-only}, both tasks, both evaluation protocols, 3 init seeds, ≥3 position assignments. |
+| 14–15 | S7 | §2 R3 end-to-end path; R4 run-level metrics + source probe + subject-003 control. |
+| 16–17 | S8 | §4 figures and tables. Writing runs in parallel from day 9 using placeholder numbers. |
+| 18–20 | S9 | Buffer, then R10 architecture comparison only if genuinely free. |
 
 **Cut under deadline pressure, in this order:** R10 architecture comparison → Dirichlet label skew → client-masked evaluation protocol (keep the global one) → communication-cost figure (Fig 9) → third channel assignment → full split-seed replication → the FedYogi arm of the WP1 sweep. **Never cut:** the local-only baseline, the matched-K pairing, the ρ=0.0 collapse point, or the degenerate-model detector.
 
@@ -276,7 +281,7 @@ Already cut by the deadline: window-length ablation (§2 R4-4), leave-one-subjec
 
 Real debt, invisible to a reviewer, not worth the risk before submission:
 
-- Refactoring `_run_flower_core` (337 lines) beyond what WP1's strategy parameterization requires.
+- **`_run_flower_core` (340 lines) — one exception, gated.** Four sessions edit this function, so a single contained refactor is cheaper and safer than four stacked edits. Do the task-adapter refactor (`build_model` / `build_loader` / `evaluate` / `history_row`, collapsing the seven task branch points) **at the start of Session 3, as a standalone step**, then re-run one existing config and require **bitwise-identical outputs** before making any behavioral change. If outputs differ, revert and proceed without the refactor. Do not refactor after the R1 changes land.
 - Merging the two Flower client classes into a base class.
 - Cleaning the 13 unread YAML keys, the unread `config["experiment"]` block, or the `experiment` parameter naming collision — **except** to fix the three-way duplication of the sampling rates and channel/subject lists, which must have exactly one source of truth given §1 above.
 - The double-execution inefficiencies (`--task both` running the audit twice, `_group_run_records` running six times, O(rounds²) history rewrites). Fix only if they cost more than a few minutes per run.
@@ -292,6 +297,9 @@ Real debt, invisible to a reviewer, not worth the risk before submission:
 - [ ] Local-only baseline implemented and reported for both tasks and all partitions.
 - [ ] Run-level classification metrics with Wilson intervals; source probe and subject-003 cross-session control implemented.
 - [ ] 3 initialization seeds for every reported config; mean ± std in all tables; bootstrap CIs over runs.
+- [ ] Split seed and initialization seed are **separate config keys** — a single `seed: 4601` currently drives both.
+- [ ] R8 surfaced: the Test_2 sampling-rate override annotated in the run summary and setup audit; APDM reference precision computed where possible and recorded.
+- [ ] R7: `PRIVACY_NOTES.md` written, stating the threat model and that FedAvg provides data minimization rather than a formal guarantee.
 - [ ] Every non-IID result has a matched-K IID result and a matched-K local-only result. K ∈ {2, 3} only.
 - [ ] Channel-availability partitions implemented by **masking** (9-channel input everywhere); identical parameter shapes across clients asserted; ρ sweep including ρ=0.0 reported; ≥3 channel assignments; both evaluation protocols reported.
 - [ ] IID partitions assert every client holds ≥1 run per subject and no client holds all runs of any subject.
