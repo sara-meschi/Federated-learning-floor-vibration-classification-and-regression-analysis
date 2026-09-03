@@ -12,7 +12,7 @@ from redo_by_sara.combined_iid_flower import (
 from redo_by_sara.combined_residual_run_regression import (
     build_zero_initialized_residual_model,
 )
-from redo_by_sara.federated import get_parameters, set_parameters
+from redo_by_sara.parameters import get_parameters, set_parameters
 
 
 def test_cosine_round_learning_rate_matches_declared_schedule() -> None:

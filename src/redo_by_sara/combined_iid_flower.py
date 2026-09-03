@@ -30,8 +30,8 @@ from .combined_residual_run_regression import (
     collate_whole_runs,
     compute_train_source_subject_means,
 )
-from .federated import get_parameters, set_parameters
 from .models import SimpleCNN1D
+from .parameters import get_parameters, set_parameters
 
 
 _CLIENT_ARTIFACT_CACHE: dict[str, dict[str, object]] = {}
