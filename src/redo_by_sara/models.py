@@ -1,3 +1,18 @@
+"""Model architectures for the combined experiments.
+
+``SimpleCNN1D`` is the only architecture the paper uses, for both tasks: nine input
+channels for classification (eight class logits) and nine for regression (one
+standardized residual).  Nine input channels on every client is what keeps parameter
+shapes identical across clients so FedAvg can average them, which is why
+channel-availability heterogeneity is implemented by **masking** the input in the
+dataset's ``__getitem__`` after normalization, never by slicing it or by making the
+model mask-aware.  See ``CLAUDE.md`` invariant 5.
+
+``MaskAwareSimpleCNN1D`` used to live here.  It doubled the input to 18 channels by
+concatenating a mask-indicator channel, which breaks that invariant, and it is now
+quarantined at ``legacy/mask_aware_model.py``.  Do not resurrect it.
+"""
+
 from __future__ import annotations
 
 import torch
@@ -31,9 +46,3 @@ class SimpleCNN1D(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.features(x)
         return self.head(x)
-
-
-class MaskAwareSimpleCNN1D(SimpleCNN1D):
-    def __init__(self, signal_channels: int, output_dim: int) -> None:
-        super().__init__(in_channels=signal_channels * 2, output_dim=output_dim)
-        self.signal_channels = signal_channels

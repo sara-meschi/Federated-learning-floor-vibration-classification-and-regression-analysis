@@ -4,3 +4,4 @@ TestData/
 __pycache__/
 *.pyc
 wandb/
+artifacts/_r1_evidence_readonly_backup/
