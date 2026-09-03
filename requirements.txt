@@ -6,3 +6,4 @@ matplotlib
 h5py
 wandb
 flwr[simulation]
+pytest
