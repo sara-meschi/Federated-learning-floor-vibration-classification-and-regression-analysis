@@ -48,11 +48,26 @@ These belong in **test files as independent literals**, not as constants importe
 
 Federated regression previously collapsed to a constant predictor: one distinct prediction across 238 test rows, `global_train_standardized_mse` flat at 1.0 for 60 rounds, test R² (0.9244) fractionally *below* the subject-mean baseline (0.9246), while the summary reported it as a near-match to centralized. Any regression run must pass the degenerate-model detector before its numbers are used.
 
+## The legacy pipeline is quarantined — never run it, never copy from it
+
+The repo contains two pipelines. Every number in the paper comes from the **`combined_*` stack**, which is verified compliant with everything above. The **legacy stack** (`preprocessing.py`, `sensor_non_iid.py`, `iid_partitioning.py`, `federated.py`'s partitioning, `training.py`, `MaskAwareSimpleCNN1D`, and the 17 legacy configs) violates this document in ways that would silently produce wrong numbers:
+
+- No Test_2 sampling-rate override — reads 1652 Hz from metadata and time-warps every window by +3.3%.
+- No subject-006 exclusion; five configs assign 006 to a client and omit 001/002. Already materialized in the stale `raw_windows*` artifacts.
+- `run_uid` keyed without `source_id`, so subject 003's runs collide across sources.
+- `sensor_non_iid.py` splits train/test **inside a run** with a zero purge gap — the exact leakage invariant 1 exists to prevent.
+- `federated.py` replicates a shared subject's windows into every owning client, so the same window is owned twice.
+- Sensor partitioning slices rather than masks, assumes K=4, and pulls in out-of-hallway channels 16–19.
+
+These files are moved to `legacy/` with an import guard, along with `config.py`, the legacy scripts, and the legacy test files. Do not run them, do not import them, and do not use them as reference implementations. The shared exceptions are `SimpleCNN1D`, which stays in `models.py`, and `get_parameters`/`set_parameters`, which move to `parameters.py`.
+
+Full findings: `docs/session0_findings.md`.
+
 ## Working agreement
 
 - Do **not** rewrite the preprocessing pipeline, the artifact schema, or the run-splitting logic. They are correct. **Carve-out:** additive, self-contained evaluation splits for specific control experiments — notably the subject-003 cross-session control, which trains on 003's runs from one source and tests on the other — are allowed, provided they are a separate code path that does not modify `assign_run_splits`, the canonical seed-4601 split, or the main artifacts.
 - Split seed and initialization seed must be **separate config keys**. A single `seed: 4601` currently drives both, which makes "3 initialization seeds on the fixed split" impossible.
-- Known traps: `sensor_non_iid.py` must not be reused for the channel work — it slices rather than masks, assumes K=4, pulls in out-of-hallway channels, and splits within runs. `MaskAwareSimpleCNN1D` doubles input channels to 18, which is the wrong shape for the masking scheme. `training.py` currently refuses mask-aware regression.
+- Known traps: masking goes in the dataset's `__getitem__` after normalization, **not** in the model — the model stays plain `SimpleCNN1D` with 9 input channels so parameter shapes stay identical across clients. Do not resurrect `MaskAwareSimpleCNN1D` (18-channel doubling), `training.py`, or `sensor_non_iid.py`; all are quarantined.
 - Propose a plan before any change larger than a single function, and wait for approval.
 - One work package per session; commit and `/clear` between them.
 - Append a summary of what changed — and every number that moved — to `CHANGES.md`.

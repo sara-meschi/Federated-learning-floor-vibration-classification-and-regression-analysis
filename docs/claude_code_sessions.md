@@ -40,13 +40,33 @@ Work through these in order. One session per work package. Between every session
 >
 > Specifically: unify `_set_random_seeds` into one shared implementation including the cudnn determinism block; make `--verify-only` write nothing; add the degenerate-model detector that runs at the end of every regression run; add `conftest.py` and `pyproject.toml` so pytest runs from the repo root, add pytest to requirements, and mark data-dependent tests with `@pytest.mark.requires_data`.
 >
-> Also from §2: fix R9 — `test_evaluation_counter` must actually increment on every touch of the test set. And R8 — surface the Test_2 sampling-rate override (1652 metadata → 1706.667 true) as an explicit annotated field in the run summary and setup audit, with the justification in the comment.
+> Also from §2: fix R9 — `test_evaluation_counter` must actually increment on every touch of the test set. And R8 — the sampling-rate override is already surfaced in the centralized artifact summaries, `setup_audit.conditions`, and `run_manifest.csv`; the only gap is that the FL per-task `training_summary.json` carries no sample-rate field. Extend that, don't rebuild what exists.
 >
 > Do not touch preprocessing, the artifact schema, or the run-splitting logic. Propose a plan first.
+>
+> Then four items from your Session 0 findings, in this order:
+>
+> **Quarantine the legacy pipeline — in this order, because the order matters.** `federated.py:15` imports `training` at module level, so guarding `training.py` first would propagate an exception through `federated.py` into `combined_iid_flower.py:33` and take down the live pipeline.
+>
+> 1. Create `parameters.py` containing `get_parameters` and `set_parameters` (currently `federated.py:304` and `:308`), with no dependency on `training.py`. Session 4's local-only mode will need these too.
+> 2. Update the two consumers: `combined_iid_flower.py:33` and `test_combined_iid_flower.py:15`.
+> 3. Verify the combined pipeline still runs. Only then proceed.
+> 4. Move `preprocessing.py`, `sensor_non_iid.py`, `iid_partitioning.py`, `training.py`, `config.py`, `federated.py`, the 17 legacy configs, the 14 legacy scripts, and the 2 legacy test files into `legacy/` (using `legacy/scripts/` and `legacy/tests/`), with an import-time guard that raises. The test files must move — dead imports there would break collection for the whole suite, which defeats the pytest work in this same session.
+> 5. `MaskAwareSimpleCNN1D` shares `models.py` with `SimpleCNN1D`: move the **class**, leave the file. `SimpleCNN1D` stays put.
+>
+> Verify with the full test suite and one combined config end to end.
+>
+> **Delete the stale artifacts.** `artifacts/raw_windows*` contain subject 006 (A2, materialized on disk). Remove them so nothing can read them by accident.
+>
+> **Fix the stale docs** — README.md lines 14, 39, 54-55, 95, 100 and PLAN.md lines 22, 34, 35 (B1–B6). They currently claim 20 channels, a 60/20/20 train/val/test split, a validation-selected best model, and a single-source dataset. All false, and later sessions will read them.
+>
+> **Add the C1 assertion**: the 1-indexed → 0-indexed channel conversion at `combined_centralized_classification.py:433` and `combined_centralized_regression.py:171` is correct but unasserted. Assert it.
+>
+> Also write your full Session 0 contradiction list to `docs/session0_findings.md` so it survives `/clear`.
 
 **Check before approving:** nothing in the plan touches `preprocessing.py` or changes any number listed in `CLAUDE.md`.
 **Verify after:** `pytest` runs from root. Run `--verify-only` and confirm `git status` shows no new files.
-**Commit:** `git add -A && git commit -m "WP0: guardrails, determinism, verify-only, degenerate detector"`
+**Commit:** `git add -A && git commit -m "S1: guardrails, determinism, verify-only, degenerate detector"`
 
 ---
 
@@ -63,11 +83,16 @@ Work through these in order. One session per work package. Between every session
 > - Move the exact expected numbers into the test files as independent literals, not imported from the library modules.
 > - Add the split-integrity assertions from §1.1, including a test that constructs a deliberately leaky split and confirms the assertion fires.
 >
+> Also collapse the C2 duplication from your Session 0 findings into one constants module: the subject list appears 7 times, the channel list 4 times, the sample rate 5 times. §5b names this the one duplication worth fixing before submission, and you are already editing several of the sites. Update the stale docstring at `combined_iid_fl_partitioning.py:8-9` (B7), which still claims the design is intentionally fixed to three clients and seed 4601.
+>
 > Propose a plan first.
 
 **Check before approving:** the IID property "no client holds all runs of any subject" is in there, and the exact numbers are moving *to tests*, not being deleted.
 **Verify after:** run the partitioner at K=2 and K=3 and eyeball the per-client counts.
-**Commit:** `git commit -m "WP0: K-parameterized partitioner, property assertions, split-integrity tests"`
+
+**Then regenerate the reference run.** The round-robin produces a different run-to-client assignment than the old brute-force search, so the archived August artifacts stop being a valid comparison point here. Re-run one full config under the current (still-broken) settings and archive the outputs — this is the baseline Session 3's bitwise gate compares against, not the August artifacts. ~16 min on CPU for both tasks; one task is enough.
+
+**Commit:** `git commit -m "S2: K-parameterized partitioner, property assertions, split-integrity tests"`
 
 ---
 
@@ -77,7 +102,7 @@ Work through these in order. One session per work package. Between every session
 
 > Read `docs/review_response_plan.md` §2, R1. Note the corrected diagnosis: clients are not learning locally — the cause is a fresh Adam per client per round over ~10 steps, not aggregation.
 >
-> **Step 1, before any behavioral change.** Refactor `_run_flower_core` with a task adapter (`build_model` / `build_loader` / `evaluate` / `history_row`) collapsing the seven task branch points. Then re-run one existing config and confirm the outputs are **bitwise identical**. If they differ, revert the refactor and continue without it. Do not proceed to step 2 until this gate passes. See the exception note in §5b.
+> **Step 1, before any behavioral change.** Refactor `_run_flower_core` with a task adapter (`build_model` / `build_loader` / `evaluate` / `history_row`) collapsing the seven task branch points. Then re-run one config and confirm the outputs are **bitwise identical to the reference run archived at the end of Session 2** — not to the archived August artifacts, which are stale because Session 1 changed RNG consumption and Session 2 changed the partition assignment. If they differ, revert the refactor and continue without it. Do not proceed to step 2 until this gate passes. See the exception note in §5b.
 >
 > **Step 2.** Parameterize local epochs, LR schedule (constant and per-round-restart options), batch size, and server optimizer. Add **client optimizer state persistence across rounds** as a first-class option. Add FedAdam and FedYogi as selectable Flower strategies. Add the matched-budget reporting from R1.
 >
@@ -93,7 +118,7 @@ Work through these in order. One session per work package. Between every session
 
 **Check before approving:** it is not changing the model architecture, the residual target, or the run-balanced loss. Only the optimization setup.
 **Verify after:** open `test_window_predictions.csv` yourself and count distinct values. This is the number the whole paper turns on.
-**Commit:** `git commit -m "WP1: fix federated regression collapse, add FedAdam/FedYogi, sweep"`
+**Commit:** `git commit -m "S3: fix federated regression collapse, add FedAdam/FedYogi, sweep"`
 
 **If nothing in the sweep clears the acceptance criteria, stop and tell me before continuing.**
 
@@ -114,7 +139,7 @@ Work through these in order. One session per work package. Between every session
 > Propose a plan first.
 
 **Check before approving:** the consolidated metrics function is used everywhere, not added as a fourth implementation.
-**Commit:** `git commit -m "WP2/WP4: unified regression metrics with skill score, local-only baseline"`
+**Commit:** `git commit -m "S4: unified regression metrics with skill score, local-only baseline"`
 
 ---
 
@@ -124,7 +149,9 @@ Work through these in order. One session per work package. Between every session
 
 > Read `docs/review_response_plan.md` §1.3 and `docs/sensor_layout.md` in full.
 >
-> Three known blockers to handle first: `MaskAwareSimpleCNN1D` doubles input channels to 18, which is the wrong shape for this scheme; `training.py` currently refuses mask-aware regression, blocking the regression arm entirely; and `sensor_non_iid.py` must **not** be reused — it slices rather than masks, assumes K=4, pulls in out-of-hallway channels, and splits within runs.
+> Two notes before you start. **Do not use `MaskAwareSimpleCNN1D` or `training.py`** — both are legacy and quarantined as of Session 1. The mask belongs in the dataset's `__getitem__`, applied after normalization; the model stays plain `SimpleCNN1D` with 9 input channels and needs no mask awareness. That is what keeps parameter shapes identical across clients, which is the entire point. The legacy 18-channel doubling concatenated a mask-indicator channel, which is unnecessary here because each client's mask is static.
+>
+> Likewise `sensor_non_iid.py` must **not** be reused — it slices rather than masks, assumes K=4, pulls in out-of-hallway channels 16–19, and splits train/test inside a run.
 >
 > Implement the channel-availability non-IID partitioning:
 >
@@ -138,7 +165,7 @@ Work through these in order. One session per work package. Between every session
 > Propose a plan first.
 
 **Check before approving:** the words "mask" and "identical parameter shapes" appear. If it proposes slicing the input tensor or per-client first layers, reject — FedAvg cannot average those.
-**Commit:** `git commit -m "WP5: position-level channel-availability non-IID via masking, rho sweep"`
+**Commit:** `git commit -m "S5: position-level channel-availability non-IID via masking, rho sweep"`
 
 ---
 
@@ -177,7 +204,7 @@ This session is mostly execution, but not purely — confirm the split/init seed
 >
 > Propose a plan first.
 
-**Commit:** `git commit -m "WP3/R4: end-to-end regression, run-level metrics, source probe, subject-003 control"`
+**Commit:** `git commit -m "S7: end-to-end regression, run-level metrics, source probe, subject-003 control"`
 
 ---
 
@@ -189,7 +216,7 @@ This session is mostly execution, but not purely — confirm the split/init seed
 >
 > All 10 figures and 5 tables, generated from saved artifacts with no retraining, via a single `make_all_figures(results_dir, out_dir)` entry point plus individually callable functions. Follow the IEEE style requirements in §4 exactly: 3.5in / 7.16in widths, 8pt base font, vector PDF plus 300dpi PNG, no titles inside the figures, colorblind-safe palette with redundant encoding.
 >
-> While you are here, consolidate the duplicated plotting code listed at the end of §4 — the 3 scatter implementations, the confusion renderer (5 copies, not 4), 3 `_resolve_path`, 3 `_write_rows`, 4 `_as_index_list` — into one implementation each.
+> While you are here, consolidate whatever duplicated plotting code survives Session 1's quarantine. Session 0 found that quarantine removes most of it for free — `_as_index_list` drops from 3 copies to 0 and `_confusion_matrix` from 5 to 1, since those copies live in files that moved. Re-count before acting rather than working from §4's list, which predates the quarantine, and consolidate what actually remains: the scatter implementations, `_resolve_path`, `_write_rows`, and the prediction-row builders.
 >
 > Tables emit as both LaTeX booktabs source and CSV.
 >
@@ -198,7 +225,7 @@ This session is mostly execution, but not purely — confirm the split/init seed
 > Propose a plan first.
 
 **Check after:** Figure 4 (convergence with baseline and centralized reference lines) is the one that would have caught the original collapse. Look at it closely.
-**Commit:** `git commit -m "WP7: paper figure and table suite"`
+**Commit:** `git commit -m "S8: paper figure and table suite"`
 
 ---
 
