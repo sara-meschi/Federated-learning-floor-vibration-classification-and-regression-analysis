@@ -1,8 +1,19 @@
 # Plan
 
+> **Historical.** This describes the original ENGR 859 rewrite of the raw-vibration code,
+> written before the project became an IEEE conference submission. It is kept for
+> provenance. **`CLAUDE.md` and `docs/review_response_plan.md` are authoritative**; where
+> this file disagrees with them, they are right.
+>
+> Corrected 2026-09-04: Phase 2 and Phase 4 described a train/validation/test split and
+> best-checkpoint selection by validation metric. Neither exists. The pipeline splits
+> 80/20 train/test by whole run and evaluates the held-out set exactly once, after the
+> final epoch.
+
 ## Goal
 
-Rewrite the raw-vibration portion of the thesis code in a simpler ENGR 859 style, then build a clean baseline model path for both regression and classification.
+Rewrite the raw-vibration portion of the thesis code in a simpler ENGR 859 style, then
+build a clean baseline model path for both regression and classification.
 
 ## Phase 1: Data Understanding
 
@@ -19,7 +30,9 @@ Rewrite the raw-vibration portion of the thesis code in a simpler ENGR 859 style
 - Keep metadata for dataset, subject, run, and window start time.
 - Build one shared artifact for both tasks.
 - Normalize using train-split statistics only.
-- Create explicit train, validation, and held-out test splits by run.
+- Split 80/20 into train and held-out test by whole run, keyed on
+  `run_uid = "{source}:{subject:03d}:{run:03d}"`. There is no validation split: adjacent
+  windows overlap by 4 s, so a run must never be divided across splits.
 
 ## Phase 3: Baseline Modeling
 
@@ -30,10 +43,11 @@ Rewrite the raw-vibration portion of the thesis code in a simpler ENGR 859 style
 
 ## Phase 4: Evaluation
 
-- Split by run within each subject.
-- Report train and validation metrics each epoch.
-- Save the best model by validation metric.
-- Evaluate the best checkpoint once on the held-out test split.
+- Split by whole run, never by window.
+- Report train metrics each epoch. There are no validation metrics to report.
+- The final-epoch model is the reported model; there is no best-checkpoint selection,
+  because there is no validation set to select against.
+- Evaluate the held-out test split exactly once, after the final epoch.
 
 ## Phase 5: Next Steps
 
