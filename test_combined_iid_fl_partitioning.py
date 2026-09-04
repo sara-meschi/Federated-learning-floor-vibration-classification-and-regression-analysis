@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pytest
 from functools import lru_cache
 from pathlib import Path
 
@@ -39,6 +40,7 @@ def _result():
     )
 
 
+@pytest.mark.requires_data
 def test_exact_client_counts_and_complete_window_coverage() -> None:
     classification, regression, partitions, summary = _result()
     assert tuple(len(partition.run_uids) for partition in partitions) == EXPECTED_RUN_COUNTS
@@ -64,6 +66,7 @@ def test_exact_client_counts_and_complete_window_coverage() -> None:
     assert set(owned_regression) == set(regression["train_indices"].tolist())
 
 
+@pytest.mark.requires_data
 def test_no_run_leakage_and_same_owner_for_both_tasks() -> None:
     classification, regression, partitions, summary = _result()
     client_run_sets = [set(partition.run_uids) for partition in partitions]
@@ -97,6 +100,7 @@ def test_no_run_leakage_and_same_owner_for_both_tasks() -> None:
         assert classification_uids == regression_uids == set(partition.run_uids)
 
 
+@pytest.mark.requires_data
 def test_every_client_has_all_subject_source_and_direction_strata() -> None:
     _, _, _, summary = _result()
     for client in summary["clients"]:
@@ -113,6 +117,7 @@ def test_every_client_has_all_subject_source_and_direction_strata() -> None:
             }
 
 
+@pytest.mark.requires_data
 def test_partition_is_deterministic() -> None:
     classification, regression, original, original_summary = _result()
     rebuilt, rebuilt_summary = build_combined_iid_partitions(

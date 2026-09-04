@@ -28,9 +28,30 @@ def main() -> None:
     )
     parser.add_argument("--config", required=True)
     parser.add_argument("--verify-only", action="store_true")
+    parser.add_argument(
+        "--allow-degenerate",
+        action="store_true",
+        help=(
+            "Let a regression run that fails an enforced health gate complete instead of "
+            "raising. The failure is still measured and is stamped into the run's "
+            "degenerate_model_check block, so the artifacts identify themselves as "
+            "invalid. Needed only for the known-collapsed pre-R1 baseline runs."
+        ),
+    )
+    parser.add_argument(
+        "--output-root",
+        default=None,
+        help=(
+            "Redirect training outputs so a test run cannot overwrite live artifacts. "
+            "artifact_path and baseline_summary_path are separate config keys and are "
+            "unaffected."
+        ),
+    )
     args = parser.parse_args()
 
     config = load_residual_run_config(args.config)
+    if args.output_root is not None:
+        config["output_dir"] = Path(args.output_root).resolve()
     if not config["artifact_path"].exists():
         raise FileNotFoundError(config["artifact_path"])
     if not config["baseline_summary_path"].exists():
@@ -43,7 +64,9 @@ def main() -> None:
     if args.verify_only:
         return
 
-    summary = train_and_evaluate_residual_run_model(artifact, config)
+    summary = train_and_evaluate_residual_run_model(
+        artifact, config, allow_degenerate=args.allow_degenerate
+    )
     print(json.dumps(summary, indent=2), flush=True)
 
 

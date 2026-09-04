@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from redo_by_sara.combined_centralized_classification import (
     assign_run_splits,
@@ -16,6 +17,7 @@ from redo_by_sara.combined_centralized_regression import (
 CONFIG_PATH = "configs/centralized_combined_regression_9ch_no006_walking_80_20_60e.yaml"
 
 
+@pytest.mark.requires_data
 def test_all_usable_runs_have_speed_labels() -> None:
     config = load_regression_config(CONFIG_PATH)
     records = discover_run_records(config)

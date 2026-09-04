@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 import torch
 
 from redo_by_sara.combined_residual_run_regression import (
@@ -25,6 +26,7 @@ def _load() -> tuple[dict[str, object], dict[str, object]]:
     return config, artifact
 
 
+@pytest.mark.requires_data
 def test_residual_setup_exact_counts_and_means() -> None:
     _, artifact = _load()
     setup = audit_residual_run_setup(artifact)
@@ -47,6 +49,7 @@ def test_residual_setup_exact_counts_and_means() -> None:
     assert max(abs(float(row["train_residual_mean_mps"])) for row in rows) < 1e-12
 
 
+@pytest.mark.requires_data
 def test_run_grouping_covers_each_window_once() -> None:
     _, artifact = _load()
     means, scale, _ = compute_train_source_subject_means(artifact)

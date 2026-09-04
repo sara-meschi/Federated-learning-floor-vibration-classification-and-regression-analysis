@@ -32,7 +32,7 @@ Any code, comment, config, or docstring that contradicts this is wrong and shoul
 **Critical facts:**
 
 - **Subject 006 is excluded from every experiment** due to data collection problems. This is a deliberate exclusion, not a bug. Keep it, and make the exclusion reason a named constant with a comment rather than a magic filter.
-- **Subject 003 appears in BOTH sources, on different days.** This is not duplication — it is a genuine cross-session, cross-building recording of the same person, and it is scientifically valuable (see WP5). Any code or comment implying subject 003 is duplicated or should be deduplicated is wrong.
+- **Subject 003 appears in BOTH sources, on different days.** This is not duplication — it is a genuine cross-session, cross-building recording of the same person, and it is scientifically valuable (see §2, R4). Any code or comment implying subject 003 is duplicated or should be deduplicated is wrong.
 - Effective subject set: **001, 002, 003, 004, 005, 007, 008 → 7 subjects.** Subject IDs are not contiguous; never assume `range(1, 8)`.
 - Subject identity and source are **nearly, but not fully, collinear** (003 is the only overlap). This is a confound the paper must address, and subject 003 is the instrument for addressing it.
 - `run_uid = "{source}:{subject:03d}:{run:03d}"` is the canonical atom. **A run is never split** across train/test or across federated clients — windows overlap 80%, so splitting a run leaks. This invariant is already enforced; do not weaken it.
@@ -136,9 +136,11 @@ The residual formulation hands the model the subject identity for free, so R² a
 | Condition | R² (total) | RMSE (m/s) | Skill vs subject-mean |
 |---|---|---|---|
 | Source/subject mean lookup | 0.9246 | ~0.0405 | — (reference) |
-| A: absolute regression | 0.812 | 0.0639 | −0.75 (far worse than the lookup) |
+| A: absolute regression | 0.812 | 0.0639 | **−1.49** (far worse than the lookup) |
 | B: residual + run-balanced (centralized) | 0.933 | 0.0382 | +0.11 |
 | C: residual, federated | 0.9244 | ~0.0407 | −0.003 |
+
+Skill = 1 − MSE_model / MSE_baseline. Condition A verified two ways: 1 − (0.0639/0.0405)² = −1.49, and 1 − (1−0.812)/(1−0.9246) = −1.494. An earlier draft of this table gave −0.75 for condition A; that was an arithmetic error, and the corrected figure strengthens the point rather than weakening it. Note also that **R² of 0.812 is exactly skill against the overall train mean** — the clearest statement of why R² against total variance is the misleading framing here, since it credits the model for variance the subject prior already explains.
 
 **What to build:**
 
@@ -205,7 +207,7 @@ A reviewer may ask whether `SimpleCNN1D` limits the results. Answer it cheaply a
 
 1. **Seeding parity.** `_set_random_seeds` exists in 4 copies; the FL copy silently drops the cudnn determinism block, so FL and centralized are seeded differently. Collapse to one implementation in a shared module, import it everywhere, and assert at run start that determinism flags are set identically across run types.
 2. **`--verify-only` must be read-only.** It currently writes `setup_audit.json`, `partitions/`, and a PNG. A verification that mutates outputs is not a verification. Route all writes through a single guarded writer that is a no-op in verify mode.
-3. **Replace outcome assertions with property assertions.** The nine `EXPECTED_*` tables at `combined_iid_fl_partitioning.py:31-64`, the `expected` dict with `num_examples: 1204` inside `build_regression_artifact`, `if total_runs != 112`, `expected_support = [69, 32, ...]`, and the config validator that rejects anything but 3 clients / 60 rounds / 1 local epoch all pin *outcomes*. They must become *properties*, because WP1 and the non-IID work require these parameters to vary:
+3. **Replace outcome assertions with property assertions.** The nine `EXPECTED_*` tables at `combined_iid_fl_partitioning.py:31-64`, the `expected` dict with `num_examples: 1204` inside `build_regression_artifact`, `if total_runs != 112`, `expected_support = [69, 32, ...]`, and the config validator that rejects anything but 3 clients / 60 rounds / 1 local epoch all pin *outcomes*. They must become *properties*, because the R1 fix and the non-IID work require these parameters to vary:
    - partitions are disjoint and covering; no run split across clients; `train ∩ test = ∅`
    - per-client run counts within ±1 of balanced (for IID only)
    - both tasks assign the same run to the same client
@@ -254,13 +256,13 @@ Build a single module (e.g. `paper_figures.py`) that produces every figure and t
 - **T5** Communication and compute cost.
 - All tables: mean ± std over seeds, and the run-level metric as primary.
 
-Consolidate the existing duplicated plot code while you do this — 3 copies of the actual-vs-predicted scatter (~80 lines each), 4 copies of the confusion-matrix renderer, 2 identical prediction-row builders, 3 copies of `_resolve_path`, 3 of `_write_rows` (with two different argument orders), 4 of `_as_index_list`. One implementation each, in the new module or a shared utils module.
+Consolidate the existing duplicated plot code while you do this — 3 copies of the actual-vs-predicted scatter (~80 lines each), 5 copies of the confusion-matrix renderer, 2 identical prediction-row builders, 3 copies of `_resolve_path`, 3 of `_write_rows` (with two different argument orders), 3 of `_as_index_list`. One implementation each, in the new module or a shared utils module.
 
 ---
 
 ## 5. Schedule and scope cuts — deadline is under three weeks
 
-Indicative pacing. If a stage slips, cut from the bottom of the list, never from WP0/WP1.
+Indicative pacing. If a stage slips, cut from the bottom of the list, never from the guardrails (§3) or the R1 fix.
 
 | Days | Session (`docs/claude_code_sessions.md`) | Work |
 |---|---|---|
@@ -273,7 +275,7 @@ Indicative pacing. If a stage slips, cut from the bottom of the list, never from
 | 16–17 | S8 | §4 figures and tables. Writing runs in parallel from day 9 using placeholder numbers. |
 | 18–20 | S9 | Buffer, then R10 architecture comparison only if genuinely free. |
 
-**Cut under deadline pressure, in this order:** R10 architecture comparison → Dirichlet label skew → client-masked evaluation protocol (keep the global one) → communication-cost figure (Fig 9) → third channel assignment → full split-seed replication → the FedYogi arm of the WP1 sweep. **Never cut:** the local-only baseline, the matched-K pairing, the ρ=0.0 collapse point, or the degenerate-model detector.
+**Cut under deadline pressure, in this order:** R10 architecture comparison → Dirichlet label skew → client-masked evaluation protocol (keep the global one) → communication-cost figure (Fig 9) → third channel assignment → full split-seed replication → the FedYogi arm of the R1 sweep. **Never cut:** the local-only baseline, the matched-K pairing, the ρ=0.0 collapse point, or the degenerate-model detector.
 
 ## 5b. Out of scope for now — do not do these
 

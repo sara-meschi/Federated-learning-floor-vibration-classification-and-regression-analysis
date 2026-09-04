@@ -1,0 +1,23 @@
+[tool.pytest.ini_options]
+# `pytest` from the repo root must just work. Five of the seven test files had no
+# sys.path bootstrap and could not import `redo_by_sara` without one.
+pythonpath = ["src"]
+testpaths = ["."]
+
+# `legacy/` must never be collected. Its __init__.py raises by design, so descending
+# into it turns the quarantine into a collection error for the whole suite.
+norecursedirs = [
+    "legacy",
+    "artifacts",
+    "wandb",
+    "TestData",
+    ".git",
+    "__pycache__",
+    "docs",
+]
+
+markers = [
+    "requires_data: needs the gitignored .pt artifacts or the 7.6 GB TestData/ tree; auto-skipped when absent",
+]
+
+addopts = "--strict-markers"

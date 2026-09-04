@@ -25,6 +25,13 @@ from .combined_centralized_classification import (
     load_combined_config,
     window_start_indices,
 )
+from .guardrails import (
+    assert_channel_index_conversion,
+    assert_determinism_flags,
+    check_regression_health,
+    seeding_record,
+    set_random_seeds,
+)
 from .models import SimpleCNN1D
 
 
@@ -168,7 +175,11 @@ def build_regression_artifact(config: dict[str, Any]) -> dict[str, object]:
     split_by_uid = assign_run_splits(records, config["seed"], config["test_ratio"])
     speed_by_uid, label_details_by_uid = load_speed_labels(config, records, split_by_uid)
 
+    # Config channels are 1-indexed; numpy needs 0-indexed. CLAUDE.md requires this
+    # conversion to be asserted, not merely correct: a silent off-by-one shifts every
+    # channel, keeps the array shape, still trains, and is undetectable downstream.
     channel_indices = [channel - 1 for channel in config["selected_channels"]]
+    assert_channel_index_conversion(config["selected_channels"], channel_indices)
     target_rate = config["target_sample_rate"]
     window_samples = int(round(config["window_seconds"] * target_rate))
     samples: list[np.ndarray] = []
@@ -368,17 +379,6 @@ def regression_metrics(actual: np.ndarray, predicted: np.ndarray) -> dict[str, f
         "r2": r2,
         "within_0_10_mps_pct": within_0_10,
     }
-
-
-def _set_random_seeds(seed: int) -> None:
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(seed)
-    if torch.backends.cudnn.is_available():
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
 
 
 def _run_epoch(
@@ -639,7 +639,8 @@ def _add_train_run_mean_baselines(
 def train_and_evaluate_regression(
     artifact: dict[str, object], config: dict[str, Any]
 ) -> dict[str, Any]:
-    _set_random_seeds(config["seed"])
+    seeding = set_random_seeds(config["seed"])
+    assert_determinism_flags()
     output_dir: Path = config["output_dir"]
     output_dir.mkdir(parents=True, exist_ok=True)
     train_indices = artifact["train_indices"].tolist()
@@ -776,9 +777,42 @@ def train_and_evaluate_regression(
     source_subject_baseline_mse = baseline_metrics["run"][
         "source_subject_train_run_mean"
     ]["mse"]
+
+    # Degenerate-model detector. Only the `degeneracy` gate is enforced here, and that
+    # exemption is a stated property of this run type rather than a threshold judgement:
+    # this is the ABSOLUTE-speed model (R2 condition A), which trains normally but scores
+    # around -0.75 against the source/subject-mean lookup. That is a weak model, not a
+    # collapsed one, and it is a result to report rather than a run to abort. Standardized
+    # MSE is defined against the train residual scale and has no meaning on this path, so
+    # it is recorded as null instead of being thresholded against a scale that does not
+    # exist here.
+    health = check_regression_health(
+        actual=[row["actual_speed_mps"] for row in run_rows],
+        predicted=[row["predicted_speed_mps"] for row in run_rows],
+        baseline=[row["source_subject_train_run_mean_mps"] for row in run_rows],
+        final_standardized_mse=None,
+        enforced_gates=("degeneracy",),
+        run_label=str(artifact["summary"]["experiment"]),
+        # No residual decomposition here: the network emits the speed directly, so the
+        # reported prediction and the model output are the same quantity.
+        model_output_name="predicted speed",
+        standardized_mse_not_applicable_reason=(
+            "This model regresses absolute walking speed, not a standardized residual, "
+            "so there is no train residual scale to standardize against."
+        ),
+    )
+    health["window_level"] = {
+        "num_predictions": len(window_rows),
+        "distinct_predicted_speed_mps": len(
+            {row["predicted_speed_mps"] for row in window_rows}
+        ),
+    }
+
     summary = {
         "experiment": artifact["summary"]["experiment"],
         "device": str(device),
+        "seeding": seeding,
+        "degenerate_model_check": health,
         "epochs": config["epochs"],
         "batch_size": config["batch_size"],
         "initial_learning_rate": config["learning_rate"],

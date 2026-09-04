@@ -19,6 +19,12 @@ from scipy.signal import resample_poly
 from torch import nn
 from torch.utils.data import DataLoader, Dataset
 
+from .guardrails import (
+    assert_channel_index_conversion,
+    assert_determinism_flags,
+    seeding_record,
+    set_random_seeds,
+)
 from .models import SimpleCNN1D
 
 
@@ -430,7 +436,11 @@ def build_combined_artifact(config: dict[str, Any]) -> dict[str, object]:
         f"subject_{subject_id}_walking" for subject_id in included_subjects
     ]
     class_to_index = {class_name: index for index, class_name in enumerate(class_names)}
+    # Config channels are 1-indexed; numpy needs 0-indexed. CLAUDE.md requires this
+    # conversion to be asserted, not merely correct: a silent off-by-one shifts every
+    # channel, keeps the array shape, still trains, and is undetectable downstream.
     channel_indices = [channel - 1 for channel in config["selected_channels"]]
+    assert_channel_index_conversion(config["selected_channels"], channel_indices)
     target_rate = config["target_sample_rate"]
     window_samples = int(round(config["window_seconds"] * target_rate))
 
@@ -627,17 +637,6 @@ def save_combined_artifact(
         writer = csv.DictWriter(handle, fieldnames=list(manifest[0].keys()))
         writer.writeheader()
         writer.writerows(manifest)
-
-
-def _set_random_seeds(seed: int) -> None:
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(seed)
-    if torch.backends.cudnn.is_available():
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
 
 
 def _run_epoch(
@@ -851,7 +850,8 @@ def _write_test_predictions(
 def train_and_evaluate(
     artifact: dict[str, object], config: dict[str, Any]
 ) -> dict[str, Any]:
-    _set_random_seeds(config["seed"])
+    seeding = set_random_seeds(config["seed"])
+    assert_determinism_flags()
     output_dir: Path = config["output_dir"]
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -963,6 +963,7 @@ def train_and_evaluate(
     summary = {
         "experiment": artifact["summary"]["experiment"],
         "device": str(device),
+        "seeding": seeding,
         "epochs": config["epochs"],
         "batch_size": config["batch_size"],
         "initial_learning_rate": config["learning_rate"],

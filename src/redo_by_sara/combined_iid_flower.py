@@ -30,6 +30,14 @@ from .combined_residual_run_regression import (
     collate_whole_runs,
     compute_train_source_subject_means,
 )
+from .guardrails import (
+    GuardedWriter,
+    TestSetAccessGuard,
+    assert_determinism_flags,
+    check_regression_health,
+    seeding_record,
+    set_random_seeds,
+)
 from .models import SimpleCNN1D
 from .parameters import get_parameters, set_parameters
 
@@ -121,14 +129,6 @@ def _load_artifact_cached(path: str | Path) -> dict[str, object]:
     return artifact
 
 
-def _set_random_seeds(seed: int) -> None:
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(seed)
-
-
 def cosine_round_learning_rate(
     server_round: int, maximum: float, minimum: float, total_rounds: int
 ) -> float:
@@ -162,6 +162,45 @@ def _extended_regression_metrics(actual: np.ndarray, predicted: np.ndarray) -> d
         np.median(np.abs(np.asarray(predicted) - np.asarray(actual)))
     )
     return metrics
+
+
+def _sample_rate_audit(
+    artifact: dict[str, object], config: dict[str, Any]
+) -> dict[str, Any]:
+    """The R8 sampling-rate block for a federated per-task ``training_summary.json``.
+
+    Already surfaced in the centralized ``artifact_summary.json`` (``timing_assumption``),
+    in ``setup_audit["conditions"]``, and per run in ``run_manifest.csv``. The federated
+    per-task summary was the one place it was missing.
+
+    It matters because the Test_2 override is a **+3.3% time warp** on every window from
+    that source, and walking speed is a time-derived quantity: get it wrong and every
+    label-signal relation is wrong while nothing looks broken. Values are read from the
+    already-validated config and the artifact summary rather than restated here, so this
+    does not become another copy of the rate.
+    """
+
+    experiment = config["experiment"]
+    return {
+        "test_2_metadata_sample_rate_hz": 1652.0,
+        "test_2_effective_sample_rate_hz": float(
+            experiment["test2_sample_rate_override_hz"]
+        ),
+        "testing_20251124_effective_sample_rate_hz": 1651.6129032258063,
+        "target_sample_rate_hz": float(experiment["target_sample_rate_hz"]),
+        "resample_ratios_up_down": {
+            "test_2": [15, 64],
+            "testing_20251124": [31, 128],
+        },
+        "override_justification": (
+            "The 1652 Hz in the Test_2 HDF5 metadata was recorded incorrectly; the true "
+            "rate is 1706.667 Hz. The override is deliberate. It time-warps every Test_2 "
+            "window by +3.3% relative to the metadata rate, and walking speed is a "
+            "time-derived quantity, so this affects every speed label's relation to its "
+            "signal. Applied before resampling to 400 Hz."
+        ),
+        "artifact_timing_assumption": artifact["summary"].get("timing_assumption"),
+    }
 
 
 def _build_classification_model(artifact: dict[str, object]) -> SimpleCNN1D:
@@ -338,7 +377,7 @@ class FlowerClassificationClient:
         artifact = _load_artifact_cached(self.artifact_path)
         server_round = int(config["server_round"])
         seed = _client_seed(int(self.experiment["seed"]), self.client_id, server_round)
-        _set_random_seeds(seed)
+        set_random_seeds(seed)
         torch.set_num_threads(max(1, int(self.experiment["torch_threads"])))
         model = _build_classification_model(artifact)
         set_parameters(model, parameters)
@@ -389,7 +428,7 @@ class FlowerResidualClient:
         artifact = _load_artifact_cached(self.artifact_path)
         server_round = int(config["server_round"])
         seed = _client_seed(int(self.experiment["seed"]), self.client_id, server_round)
-        _set_random_seeds(seed)
+        set_random_seeds(seed)
         torch.set_num_threads(max(1, int(self.experiment["torch_threads"])))
         dataset = RunGroupedResidualDataset(artifact, self.indices, self.source_subject_means, self.residual_scale_mps)
         dataset_uids = [str(run["run_uid"]) for run in dataset.runs]
@@ -483,7 +522,6 @@ def _regression_history_row(round_number: int, result: dict[str, Any], residual_
         "global_train_r2": metrics["r2"],
         "global_train_within_0_10_mps_pct": metrics["within_0_10_mps_pct"],
     }
-
 
 
 def _metrics_by_field(rows: Sequence[dict[str, Any]], field: str) -> dict[str, dict[str, float]]:
@@ -671,7 +709,6 @@ def audit_combined_iid_flower_setup(
     return classification, regression, partitions, setup
 
 
-
 def _fit_metric_aggregation(metrics: list[tuple[int, dict[str, Any]]]) -> dict[str, float]:
     total = sum(int(num_examples) for num_examples, _ in metrics)
     if total <= 0:
@@ -706,6 +743,7 @@ def _run_flower_core(
     num_rounds: int,
     source_subject_means: dict[tuple[str, str], float] | None = None,
     residual_scale_mps: float | None = None,
+    test_guard: TestSetAccessGuard | None = None,
 ) -> tuple[nn.Module, list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
     try:
         from flwr.common import ndarrays_to_parameters, parameters_to_ndarrays
@@ -722,7 +760,8 @@ def _run_flower_core(
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
     history_path = output_dir / "global_train_history.csv"
     client_history_path = output_dir / "local_client_fit_history.csv"
-    _set_random_seeds(config["seed"])
+    seeding = set_random_seeds(config["seed"])
+    assert_determinism_flags()
     torch.set_num_threads(max(1, int(config["client_num_cpus"])))
 
     if task == "classification":
@@ -780,7 +819,11 @@ def _run_flower_core(
             raise AssertionError("Residual final layer is not exactly zero at round 0.")
 
     global_rows: list[dict[str, Any]] = []
-    test_evaluation_counter = {"count": 0}
+    if test_guard is None:
+        test_guard = TestSetAccessGuard(artifact, label=task)
+    # Sealed for the whole of training: reaching for held-out data here both records
+    # itself and raises, so the guard prevents as well as measures.
+    test_guard.seal()
 
     def evaluate_global_train(
         server_round: int, parameters: Any, _: dict[str, Any]
@@ -997,8 +1040,8 @@ def _run_flower_core(
             f"Expected {num_rounds * config['num_clients']} successful fits, "
             f"found {len(strategy.client_rows)}."
         )
-    if test_evaluation_counter["count"] != 0:
-        raise AssertionError("Held-out test was touched during federated rounds.")
+    test_guard.assert_untouched_during_training()
+    test_guard.unseal()
     final_arrays = parameters_to_ndarrays(strategy.latest_parameters)
     final_model = (
         _build_classification_model(artifact)
@@ -1007,6 +1050,7 @@ def _run_flower_core(
     )
     set_parameters(final_model, final_arrays)
     core_audit = {
+        "seeding": seeding,
         "framework": "Flower",
         "flower_strategy": "FedAvg",
         "num_rounds": num_rounds,
@@ -1017,7 +1061,7 @@ def _run_flower_core(
         "fedavg_total_weight": sum(expected_examples.values()),
         "round_one_parameters_changed": strategy.round_one_parameter_changed,
         "global_train_evaluation_rounds": [int(row["round"]) for row in global_rows],
-        "test_evaluations_during_training": test_evaluation_counter["count"],
+        "test_evaluations_during_training": len(test_guard.accesses_while_sealed),
         "local_optimizer": "Adam recreated independently on every client and round",
         "client_shuffle_seed": "4601 + 1000*server_round + integer_client_id",
         "learning_rate_schedule": "round-wise cosine annealing; t=round-1",
@@ -1034,7 +1078,6 @@ def _run_flower_core(
     return final_model, global_rows, strategy.client_rows, core_audit
 
 
-
 def _finalize_classification(
     model: nn.Module,
     artifact: dict[str, object],
@@ -1044,6 +1087,7 @@ def _finalize_classification(
     config: dict[str, Any],
     output_dir: Path,
     num_rounds: int,
+    test_guard: TestSetAccessGuard | None = None,
 ) -> dict[str, Any]:
     from .combined_iid_flower_plots import (
         plot_classification_confusion,
@@ -1098,8 +1142,11 @@ def _finalize_classification(
         if not math.isclose(float(final_history[key]), float(value), abs_tol=1e-7):
             raise AssertionError(f"Saved final classification model disagrees with {key}.")
 
-    test_evaluation_count = 0
-    test_indices = artifact["test_indices"].tolist()
+    if test_guard is None:
+        test_guard = TestSetAccessGuard(artifact, label="classification")
+    test_indices = test_guard.test_indices(
+        f"final held-out classification evaluation after round {num_rounds}"
+    )
     test_loader = DataLoader(
         CombinedArtifactDataset(artifact, test_indices),
         batch_size=config["classification_batch_size"],
@@ -1109,7 +1156,6 @@ def _finalize_classification(
     test_metrics, matrix, predictions = _evaluate_classification(
         verified_model, test_loader, artifact["index_to_class"]
     )
-    test_evaluation_count += 1
     expected_support = [69, 32, 43, 56, 25, 25, 27, 30]
     if int(matrix.sum()) != 307 or matrix.sum(axis=1).tolist() != expected_support:
         raise AssertionError(
@@ -1124,12 +1170,14 @@ def _finalize_classification(
     central_summary = json.loads(central_summary_path.read_text())
     summary: dict[str, Any] = {
         "experiment": "combined_3client_iid_flower_classification",
+        "seeding": core_audit["seeding"],
         "framework": "Flower",
         "strategy": "FedAvg",
         "architecture": "SimpleCNN1D with GroupNorm; 9 inputs and 8 outputs",
         "rounds": num_rounds,
         "local_epochs_per_round": config["local_epochs"],
         "subjects": ["001", "002", "003", "004", "005", "007", "008"],
+        "sample_rates": _sample_rate_audit(artifact, config),
         "classes": artifact["index_to_class"],
         "selected_channels_one_based": artifact["summary"][
             "selected_channels_one_based"
@@ -1144,7 +1192,8 @@ def _finalize_classification(
             f"Held-out 20% run split evaluated exactly once after Flower round {num_rounds}; "
             "no validation or best-round selection."
         ),
-        "test_evaluation_count": test_evaluation_count,
+        "test_set_access_audit": test_guard.report(),
+        "test_evaluation_count": test_guard.count,
         "test_round": num_rounds,
         "comparison_vs_centralized": {
             "accuracy_difference": test_metrics["accuracy"]
@@ -1159,7 +1208,7 @@ def _finalize_classification(
             "saved_model_reproduces_final_global_train_history": True,
             "final_test_confusion_total": int(matrix.sum()),
             "final_test_class_support": expected_support,
-            "test_evaluation_count": test_evaluation_count,
+            **test_guard.report(),
         },
         "model_path": str(model_path),
         "global_train_history_path": str(history_path),
@@ -1210,6 +1259,8 @@ def _finalize_regression(
     config: dict[str, Any],
     output_dir: Path,
     num_rounds: int,
+    test_guard: TestSetAccessGuard | None = None,
+    allow_degenerate: bool = False,
 ) -> dict[str, Any]:
     from .combined_iid_flower_plots import (
         plot_regression_actual_vs_predicted,
@@ -1291,10 +1342,13 @@ def _finalize_regression(
         ):
             raise AssertionError(f"Saved final regression model disagrees with {key}.")
 
-    test_evaluation_count = 0
+    if test_guard is None:
+        test_guard = TestSetAccessGuard(artifact, label="regression")
     test_dataset = RunGroupedResidualDataset(
         artifact,
-        artifact["test_indices"].tolist(),
+        test_guard.test_indices(
+            f"final held-out residual regression evaluation after round {num_rounds}"
+        ),
         source_subject_means,
         residual_scale_mps,
     )
@@ -1313,7 +1367,6 @@ def _finalize_regression(
         optimizer=None,
         collect_windows=True,
     )
-    test_evaluation_count += 1
     run_rows, window_rows = _build_regression_prediction_rows(
         artifact, test_dataset, test_result, source_subject_means
     )
@@ -1333,17 +1386,49 @@ def _finalize_regression(
         np.asarray([row["actual_speed_mps"] for row in run_rows]),
         np.asarray([row["source_subject_train_mean_mps"] for row in run_rows]),
     )
+    # The degenerate-model detector, run before the summary is written so a collapsed
+    # run cannot be reported as a near-match to centralized (R1). Both gates are enforced
+    # on the residual path: this is where the collapse happened.
+    health = check_regression_health(
+        actual=[row["actual_speed_mps"] for row in run_rows],
+        predicted=[row["predicted_speed_mps"] for row in run_rows],
+        baseline=[row["source_subject_train_mean_mps"] for row in run_rows],
+        final_standardized_mse=float(final_history["global_train_standardized_mse"]),
+        enforced_gates=("degeneracy", "skill"),
+        run_label="combined_3client_iid_flower_residual_run_regression",
+        # Gate degeneracy on the window-level residual, which is what the network emits.
+        # The reported speed is baseline + residual, so a constant model still produces
+        # one value per source/subject stratum (8) and looks less degenerate than it is.
+        model_output=[row["predicted_residual_mps"] for row in window_rows],
+        model_output_name="window predicted residual",
+        allow_degenerate=allow_degenerate,
+    )
+    # Window-level distinctness is the sharper diagnostic: the collapse produced one
+    # distinct predicted residual across all 238 test windows, which the 28 run-level
+    # rows can mask because they differ by their per-subject baselines.
+    health["window_level"] = {
+        "num_predictions": len(window_rows),
+        "distinct_predicted_residual_mps": len(
+            {row["predicted_residual_mps"] for row in window_rows}
+        ),
+        "distinct_predicted_speed_mps": len(
+            {row["predicted_speed_mps"] for row in window_rows}
+        ),
+    }
+
     central_summary_path = config["centralized_regression_dir"] / "training_summary.json"
     central_summary = json.loads(central_summary_path.read_text())
     central_metrics = central_summary["test_run_metrics"]
     summary: dict[str, Any] = {
         "experiment": "combined_3client_iid_flower_residual_run_regression",
+        "seeding": core_audit["seeding"],
         "framework": "Flower",
         "strategy": "FedAvg weighted by unique complete training runs",
         "architecture": "Unchanged SimpleCNN1D with one standardized residual output",
         "rounds": num_rounds,
         "local_epochs_per_round": config["local_epochs"],
         "subjects": ["001", "002", "003", "004", "005", "007", "008"],
+        "sample_rates": _sample_rate_audit(artifact, config),
         "selected_channels_one_based": artifact["summary"][
             "selected_channels_one_based"
         ],
@@ -1364,6 +1449,7 @@ def _finalize_regression(
             for key, value in final_history.items()
             if key.startswith("global_train_")
         },
+        "degenerate_model_check": health,
         "test_run_metrics": run_metrics,
         "test_window_metrics": window_metrics,
         "test_source_subject_mean_baseline_run_metrics": baseline_metrics,
@@ -1373,7 +1459,8 @@ def _finalize_regression(
             f"Held-out 20% run split evaluated exactly once after Flower round {num_rounds}; "
             "no validation or best-round selection."
         ),
-        "test_evaluation_count": test_evaluation_count,
+        "test_set_access_audit": test_guard.report(),
+        "test_evaluation_count": test_guard.count,
         "test_round": num_rounds,
         "comparison_vs_centralized_residual_cnn": {
             "fl_rmse_mps": run_metrics["rmse_mps"],
@@ -1389,7 +1476,7 @@ def _finalize_regression(
             "saved_model_reproduces_final_global_train_history": True,
             "final_test_unique_runs": len(run_rows),
             "final_test_windows": len(window_rows),
-            "test_evaluation_count": test_evaluation_count,
+            **test_guard.report(),
         },
         "model_path": str(model_path),
         "global_train_history_path": str(history_path),
@@ -1438,10 +1525,20 @@ def _finalize_regression(
     return summary
 
 
-
 def prepare_combined_iid_flower_experiment(
-    config: dict[str, Any], output_root: str | Path | None = None
+    config: dict[str, Any],
+    output_root: str | Path | None = None,
+    *,
+    write_outputs: bool = True,
 ) -> dict[str, Any]:
+    """Audit the setup and, unless ``write_outputs`` is False, persist it.
+
+    ``write_outputs=False`` is what makes ``--verify-only`` a genuine verification: every
+    write is routed through one :class:`GuardedWriter`, so the run produces no directory,
+    no ``setup_audit.json``, no partition files and no plot. A verification that mutates
+    its own outputs is not a verification (§3 item 2).
+    """
+
     from .combined_iid_fl_partitioning import save_combined_iid_partitions
     from .combined_iid_flower_plots import plot_partition_balance
 
@@ -1453,10 +1550,20 @@ def prepare_combined_iid_flower_experiment(
         if output_root is not None
         else Path(config["output_dir"])
     )
-    destination.mkdir(parents=True, exist_ok=True)
-    partition_paths = save_combined_iid_partitions(
-        partitions, setup["partition"], destination / "partitions"
+    writer = GuardedWriter(destination, enabled=write_outputs)
+    writer.mkdir()
+    partition_dir = destination / "partitions"
+    partition_paths = writer.call(
+        save_combined_iid_partitions, partitions, setup["partition"], partition_dir
     )
+    if partition_paths is None:
+        # Verify mode: report the paths a real run would produce without creating them.
+        partition_paths = {
+            "partitions": partition_dir / "combined_iid_client_partitions.json",
+            "run_manifest": partition_dir / "combined_iid_run_to_client.csv",
+            "summary": partition_dir / "combined_iid_partition_summary.json",
+        }
+        writer.planned_writes.extend(str(value) for value in partition_paths.values())
     setup_path = destination / "setup_audit.json"
     setup["partition_files"] = {
         key: str(value) for key, value in partition_paths.items()
@@ -1475,9 +1582,9 @@ def prepare_combined_iid_flower_experiment(
         "classification_no_walking_class": True,
         "regression_walking_only": True,
     }
-    setup_path.write_text(json.dumps(setup, indent=2))
+    writer.write_text(setup_path, json.dumps(setup, indent=2))
     partition_plot = destination / "partitions" / "client_partition_balance.png"
-    plot_partition_balance(setup["partition"], partition_plot)
+    writer.call(plot_partition_balance, setup["partition"], partition_plot)
     return {
         "classification_artifact": classification,
         "regression_artifact": regression,
@@ -1486,6 +1593,7 @@ def prepare_combined_iid_flower_experiment(
         "output_root": destination,
         "setup_path": setup_path,
         "partition_plot": partition_plot,
+        "writer": writer,
     }
 
 
@@ -1495,6 +1603,7 @@ def run_combined_iid_flower_experiment(
     *,
     num_rounds_override: int | None = None,
     output_root: str | Path | None = None,
+    allow_degenerate: bool = False,
 ) -> dict[str, Any]:
     if task not in {"classification", "regression"}:
         raise ValueError("task must be 'classification' or 'regression'.")
@@ -1513,6 +1622,10 @@ def run_combined_iid_flower_experiment(
     task_output = prepared["output_root"] / task
     if task == "classification":
         artifact = prepared["classification_artifact"]
+        # One guard spans training and finalization, so "the test set was untouched
+        # during training" is measured on the same counter that the final evaluation
+        # increments, rather than asserted about a counter nothing ever touched (R9).
+        test_guard = TestSetAccessGuard(artifact, label="classification")
         model, global_rows, client_rows, core_audit = _run_flower_core(
             task="classification",
             artifact=artifact,
@@ -1522,6 +1635,7 @@ def run_combined_iid_flower_experiment(
             config=config,
             output_dir=task_output,
             num_rounds=num_rounds,
+            test_guard=test_guard,
         )
         return _finalize_classification(
             model,
@@ -1532,12 +1646,14 @@ def run_combined_iid_flower_experiment(
             config,
             task_output,
             num_rounds,
+            test_guard=test_guard,
         )
 
     artifact = prepared["regression_artifact"]
     means, scale, _ = _federated_residual_baseline(
         artifact, prepared["partitions"]
     )
+    test_guard = TestSetAccessGuard(artifact, label="regression")
     model, global_rows, client_rows, core_audit = _run_flower_core(
         task="regression",
         artifact=artifact,
@@ -1549,6 +1665,7 @@ def run_combined_iid_flower_experiment(
         num_rounds=num_rounds,
         source_subject_means=means,
         residual_scale_mps=scale,
+        test_guard=test_guard,
     )
     return _finalize_regression(
         model,
@@ -1561,4 +1678,6 @@ def run_combined_iid_flower_experiment(
         config,
         task_output,
         num_rounds,
+        test_guard=test_guard,
+        allow_degenerate=allow_degenerate,
     )

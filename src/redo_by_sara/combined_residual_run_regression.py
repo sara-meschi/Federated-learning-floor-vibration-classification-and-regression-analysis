@@ -19,6 +19,12 @@ from .combined_centralized_regression import (
     load_regression_config,
     regression_metrics,
 )
+from .guardrails import (
+    assert_determinism_flags,
+    check_regression_health,
+    seeding_record,
+    set_random_seeds,
+)
 from .models import SimpleCNN1D
 
 
@@ -263,17 +269,6 @@ def aggregate_windows_by_run(
     if torch.any(counts == 0):
         raise ValueError("Every run must receive at least one window prediction.")
     return sums / counts
-
-
-def _set_random_seeds(seed: int) -> None:
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(seed)
-    if torch.backends.cudnn.is_available():
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
 
 
 def build_zero_initialized_residual_model() -> SimpleCNN1D:
@@ -640,7 +635,10 @@ def _comparison(candidate: dict[str, float], reference: dict[str, float]) -> dic
 
 
 def train_and_evaluate_residual_run_model(
-    artifact: dict[str, object], config: dict[str, Any]
+    artifact: dict[str, object],
+    config: dict[str, Any],
+    *,
+    allow_degenerate: bool = False,
 ) -> dict[str, Any]:
     setup_summary = audit_residual_run_setup(artifact)
     source_subject_means, residual_scale_mps, mean_rows = (
@@ -655,7 +653,8 @@ def train_and_evaluate_residual_run_model(
         artifact, test_indices, source_subject_means, residual_scale_mps
     )
 
-    _set_random_seeds(config["seed"])
+    seeding = set_random_seeds(config["seed"])
+    assert_determinism_flags()
     generator = torch.Generator().manual_seed(config["seed"])
     train_loader = DataLoader(
         train_dataset,
@@ -826,6 +825,31 @@ def train_and_evaluate_residual_run_model(
         ),
     )
 
+    # Degenerate-model detector. Both gates are enforced here: this is a residual run, so
+    # R1's acceptance criteria apply in full and the standardized MSE is meaningful.
+    health = check_regression_health(
+        actual=[row["actual_speed_mps"] for row in run_rows],
+        predicted=[row["predicted_speed_mps"] for row in run_rows],
+        baseline=[row["source_subject_train_mean_mps"] for row in run_rows],
+        final_standardized_mse=float(history[-1]["optimization_loss_standardized_mse"]),
+        enforced_gates=("degeneracy", "skill"),
+        run_label="combined_residual_run_level_run_balanced_1d_cnn",
+        # See the federated path: the degeneracy gate must see the residual the network
+        # emits, not the baseline-inflated speed.
+        model_output=[row["predicted_residual_mps"] for row in window_rows],
+        model_output_name="window predicted residual",
+        allow_degenerate=allow_degenerate,
+    )
+    health["window_level"] = {
+        "num_predictions": len(window_rows),
+        "distinct_predicted_residual_mps": len(
+            {row["predicted_residual_mps"] for row in window_rows}
+        ),
+        "distinct_predicted_speed_mps": len(
+            {row["predicted_speed_mps"] for row in window_rows}
+        ),
+    }
+
     existing_summary = json.loads(config["baseline_summary_path"].read_text())
     existing_cnn_metrics = existing_summary["test_run_metrics"]
     output_dir: Path = config["output_dir"]
@@ -881,6 +905,8 @@ def train_and_evaluate_residual_run_model(
         },
         "setup_audit": setup_summary,
         "device": str(device),
+        "seeding": seeding,
+        "degenerate_model_check": health,
         "epochs": config["epochs"],
         "run_batch_size": config["run_batch_size"],
         "initial_learning_rate": config["learning_rate"],

@@ -27,13 +27,33 @@ def main() -> None:
     parser.add_argument("--config", required=True)
     parser.add_argument("--rebuild-artifact", action="store_true")
     parser.add_argument("--preprocess-only", action="store_true")
+    parser.add_argument(
+        "--output-root",
+        default=None,
+        help=(
+            "Redirect training outputs so a test run cannot overwrite live artifacts. "
+            "The input artifact is still read from its canonical location, because it is "
+            "an input rather than a result."
+        ),
+    )
     args = parser.parse_args()
 
     config = load_regression_config(args.config)
+    # The artifact lives under the canonical output_dir and is an INPUT here. Redirecting
+    # it along with the results would silently trigger a full rebuild from the 7.6 GB
+    # TestData tree, so only the results move.
+    canonical_dir: Path = config["output_dir"]
+    artifact_path = canonical_dir / config["artifact_name"]
+    artifact_summary_path = canonical_dir / "artifact_summary.json"
+    manifest_path = canonical_dir / "run_manifest.csv"
+    if args.output_root is not None:
+        if args.rebuild_artifact:
+            raise SystemExit(
+                "--rebuild-artifact writes the canonical artifact and cannot be combined "
+                "with --output-root. Rebuild first, then re-run with --output-root."
+            )
+        config["output_dir"] = Path(args.output_root).resolve()
     output_dir: Path = config["output_dir"]
-    artifact_path = output_dir / config["artifact_name"]
-    artifact_summary_path = output_dir / "artifact_summary.json"
-    manifest_path = output_dir / "run_manifest.csv"
 
     if args.rebuild_artifact or not artifact_path.exists():
         artifact = build_regression_artifact(config)

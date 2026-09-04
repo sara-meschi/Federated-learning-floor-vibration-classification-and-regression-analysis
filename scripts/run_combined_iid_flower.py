@@ -37,11 +37,23 @@ def main() -> None:
         help="Testing override. Requires --output-root so production results are protected.",
     )
     parser.add_argument("--output-root", default=None)
+    parser.add_argument(
+        "--allow-degenerate",
+        action="store_true",
+        help=(
+            "Let a regression run that fails an enforced health gate complete instead of "
+            "raising. The failure is still measured and is stamped into the run's "
+            "degenerate_model_check block, so the artifacts identify themselves as "
+            "invalid. Needed only for the known-collapsed pre-R1 baseline runs."
+        ),
+    )
     args = parser.parse_args()
 
     config = load_combined_iid_flower_config(args.config)
     if args.verify_only:
-        prepared = prepare_combined_iid_flower_experiment(config, args.output_root)
+        prepared = prepare_combined_iid_flower_experiment(
+            config, args.output_root, write_outputs=False
+        )
         public_setup = {
             key: value
             for key, value in prepared["setup"].items()
@@ -53,6 +65,9 @@ def main() -> None:
             "clients": prepared["setup"]["partition"]["clients"],
             "audits": prepared["setup"]["partition"]["audits"],
         }
+        # A verification must not mutate its outputs, so report what a real run would
+        # write instead of writing it.
+        public_setup["verify_only"] = prepared["writer"].report()
         print(json.dumps(public_setup, indent=2), flush=True)
         return
 
@@ -64,6 +79,7 @@ def main() -> None:
             task,
             num_rounds_override=args.rounds,
             output_root=args.output_root,
+            allow_degenerate=args.allow_degenerate,
         )
         print(json.dumps({task: summaries[task]}, indent=2), flush=True)
 
