@@ -943,6 +943,14 @@ def _run_flower_core(
         def aggregate_fit(
             self, server_round: int, results: Any, failures: Any
         ) -> tuple[Any, dict[str, Any]]:
+            # Order the client results before aggregating. Ray returns the three
+            # ClientAppActors in whatever order they finish, FedAvg sums their weighted
+            # parameters in that order, and float addition is not associative — so an
+            # identical run diverges from its twin in the last bits of round 1 and
+            # compounds from there. Sorting by client id makes aggregation reproducible.
+            results = sorted(
+                results, key=lambda item: str(dict(item[1].metrics or {}).get("client_id", ""))
+            )
             aggregated_parameters, aggregated_metrics = super().aggregate_fit(
                 server_round, results, failures
             )
