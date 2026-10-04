@@ -22,7 +22,7 @@ After each work package: run the test suite, write a summary of what changed and
 
 Any code, comment, config, or docstring that contradicts this is wrong and should be corrected.
 
-**Sources (two buildings / two collection campaigns):**
+**Sources (two collection campaigns in the SAME instrumented corridor, 19.6 months apart — not two buildings):**
 
 | Source | Subjects | Sampling rate | Notes |
 |---|---|---|---|
@@ -32,7 +32,7 @@ Any code, comment, config, or docstring that contradicts this is wrong and shoul
 **Critical facts:**
 
 - **Subject 006 is excluded from every experiment** due to data collection problems. This is a deliberate exclusion, not a bug. Keep it, and make the exclusion reason a named constant with a comment rather than a magic filter.
-- **Subject 003 appears in BOTH sources, on different days.** This is not duplication — it is a genuine cross-session, cross-building recording of the same person, and it is scientifically valuable (see §2, R4). Any code or comment implying subject 003 is duplicated or should be deduplicated is wrong.
+- **Subject 003 appears in BOTH sources, 19.6 months apart.** Not duplication — a genuine cross-session recording of the same person, and scientifically valuable (see §2, R4). Any code or comment implying subject 003 should be deduplicated is wrong. **Identity is confirmed.** The subject-003 demographics in the `Test_2` HDF5 are erroneous; `testNotes.xlsx` is authoritative for this subject.
 - Effective subject set: **001, 002, 003, 004, 005, 007, 008 → 7 subjects.** Subject IDs are not contiguous; never assume `range(1, 8)`.
 - Subject identity and source are **nearly, but not fully, collinear** (003 is the only overlap). This is a confound the paper must address, and subject 003 is the instrument for addressing it.
 - `run_uid = "{source}:{subject:03d}:{run:03d}"` is the canonical atom. **A run is never split** across train/test or across federated clients — windows overlap 80%, so splitting a run leaks. This invariant is already enforced; do not weaken it.
@@ -56,7 +56,7 @@ Client count is not a free parameter to guess at. The two experiment families an
 
 | Family | K | Client = | Purpose |
 |---|---|---|---|
-| **Natural / cross-silo (headline)** | **2** | one real building | The actual deployment scenario. `Test_2` = client 0, `20251124_Testing` = client 1. Genuine feature skew (different structure, different fs), label skew (subject sets overlap only at 003), quantity skew. |
+| **Natural / cross-silo (headline)** | **2** | one collection campaign | `Test_2` (2024-04-06) = client 0, `20251124_Testing` (2025-11-24) = client 1. Same corridor, 19.6 months apart. Genuine feature skew (different true fs, different DAQ trigger config, 19 months of environmental and structural drift), label skew (cohorts overlap only at 003), protocol skew (unidirectional vs bidirectional), quantity skew. |
 | **Channel-availability non-IID (§1.3)** | **3** | a site with a partial sensor deployment | Each client holds an overlapping subset of the 9 channels. Overlap ratio is swept to give a controlled severity curve. |
 | **IID control** | **2 and 3** | simulated site | Must be run at **both** K values, to match the two above. |
 | **Dirichlet label skew** *(optional, cut first)* | 3 | simulated site | α ∈ {0.1, 0.5} over subjects at run level. Cheap to add (partitioner only, no architecture change) and it is the controlled non-IID baseline reviewers expect. Add only if the schedule holds. |
@@ -65,7 +65,7 @@ Client count is not a free parameter to guess at. The two experiment families an
 
 **The rule that matters: IID and non-IID must be compared at matched K.** Comparing an IID K=3 run against a natural K=2 run confounds partition heterogeneity with client count, and a reviewer will say so. Every non-IID number needs an IID number *and* a local-only number at the same K.
 
-**Do not exceed K=3.** With 112 training runs, K=6 leaves ~18 runs per client and roughly 4 optimizer steps per local epoch at batch size 4 — that structurally reproduces the R1 collapse. It also weakens the claim, since "one client = one building" gets less credible as K exceeds the number of buildings actually instrumented.
+**Do not exceed K=3.** With 112 training runs, K=6 leaves ~18 runs per client and roughly 4 optimizer steps per local epoch at batch size 4 — that structurally reproduces the R1 collapse. It also weakens the claim, since "one client = one campaign" gets less credible as K exceeds the number of campaigns actually collected.
 
 **K=2 needs no apology.** Few clients holding substantial data each is the standard *cross-silo* federated setting, as distinct from cross-device FL with thousands of participants. Use the term "cross-silo" explicitly.
 
@@ -73,7 +73,7 @@ Note that the current partitioner is structurally K=3 — it blocks runs in thre
 
 ### 1.3 Channel-availability non-IID — build it by masking, not slicing
 
-This is the paper's controlled non-IID axis. It is physically motivated: different buildings instrument different hallway segments with different numbers of sensors, so partial and overlapping sensor coverage across sites is a real deployment constraint for structural vibration sensing.
+This is the paper's controlled non-IID axis. It is physically motivated: different sites instrument different corridor segments with different numbers of sensors, so partial and overlapping sensor coverage is a real deployment constraint for structural vibration sensing. **This is now the only axis in the paper standing in for spatial heterogeneity across sites**, since the natural split turned out to be cross-session rather than cross-building — so it carries more weight than originally planned.
 
 **Implement by masking. Do not slice the input tensor.** `SimpleCNN1D`'s first conv weight has shape `(out_ch, in_ch=9, kernel)`. If clients hold different numbers of channels, their first-layer tensors have different shapes and **FedAvg cannot average them**. Instead:
 
@@ -156,18 +156,22 @@ Skill = 1 − MSE_model / MSE_baseline. Condition A verified two ways: 1 − (0.
 
 ### R4 (major) — Classification is saturated and confounded with recording site
 
-FL and centralized agree on all 307 test windows including the same single error (index 1255, subject_002_walking → subject_003_walking), and the two confusion CSVs share an md5. The experiment cannot discriminate FL from centralized at this operating point. Separately, subject and source are nearly collinear, so the classifier may be reading building signature rather than gait.
+FL and centralized agree on all 307 test windows including the same single error (index 1255, subject_002_walking → subject_003_walking), and the two confusion CSVs share an md5. The experiment cannot discriminate FL from centralized at this operating point. Separately, subject and source are nearly collinear, so the classifier may be reading **session** signature rather than gait. This is worse than a building confound would have been: the corridor is identical, so whatever separates the sources is pure nuisance — DAQ trigger configuration, true sampling rate, and 19 months of drift.
 
 **What to build:**
 
 1. **Run-level metrics** as the primary classification result: aggregate window predictions per run by majority vote and by mean probability, report run-level accuracy and macro-F1 with a **Wilson 95% interval**. The effective test set is 28 runs, not 307 overlapping windows — say so.
-2. A **source-classification probe**: same architecture, label = source instead of subject. Quantifies how separable the two buildings are on their own.
-3. A **subject-003 cross-session control**: train on subject 003's runs from one source, test on subject 003's runs from the other. Report whether identity transfers across building and session. This is the single cleanest defense against the confound.
+2. A **source-classification probe**: same architecture, label = source instead of subject. Quantifies how separable the two campaigns are on their own.
+3. A **subject-003 cross-session control** — required, not optional. Two stages:
+   - *Free first look:* subject 003 already has test runs from both sources (4 from Test_2, 3 from 20251124). Break down the existing model's predictions on 003 by source. Informative, but not conclusive, since the model saw 003 from both campaigns in training and may have learned two representations of one person.
+   - *The actual control:* leave-one-source-out. Train on `Test_2` only (subjects 001, 002, 003), test on subject 003's runs from `20251124_Testing`. If identity transfers across a 19-month gap and a DAQ configuration change, the model is reading gait; if not, it is reading session. Small run — three classes, ~56 training runs.
+
+   This is the single cleanest defense against the confound, and it matters more now that the two sources share a corridor: whatever separates them is pure nuisance rather than anything meaningful.
 4. **Do not ablate window length.** 5 s / 1 s stride is fixed (§1). If classification stays saturated, the honest response is to report the run-level Wilson interval and state plainly that the task is at ceiling and cannot discriminate FL from centralized — not to manufacture headroom under deadline.
 
 ### R5 (major) — No local-only baseline, so the paper's central claim is untested
 
-The claim is that FL helps when data comes from different buildings. The comparison that establishes this is **each client training alone on its own shard**, not FL vs centralized. Centralized is the upper bound, local-only is the lower bound; FL must sit meaningfully above local-only.
+The claim is that FL helps when data comes from different silos. The comparison that establishes this is **each client training alone on its own shard**, not FL vs centralized. Centralized is the upper bound, local-only is the lower bound; FL must sit meaningfully above local-only.
 
 **What to build:** a `local_only` run mode — for each client, train on that client's partition only, evaluate on the shared global test set. Report per-client and mean ± std. Both tasks. Every partition scheme. This must appear in every results table alongside FL and centralized.
 
@@ -179,7 +183,7 @@ Full re-splitting (3 different split seeds) is more convincing but costs a full 
 
 ### R7 (moderate) — Privacy claim is unsupported by FedAvg alone
 
-No code change required unless we add DP. **Add a `PRIVACY_NOTES.md`** stating the threat model precisely: raw vibration data never leaves the building; model updates are shared; FedAvg provides data minimization, not a formal guarantee; gradient inversion is out of scope. If time permits later, leave a clean hook for DP-SGD noise injection on client updates, but do not implement it now.
+No code change required unless we add DP. **Add a `PRIVACY_NOTES.md`** stating the threat model precisely: raw vibration data never leaves its silo; model updates are shared; FedAvg provides data minimization, not a formal guarantee; gradient inversion is out of scope. If time permits later, leave a clean hook for DP-SGD noise injection on client updates, but do not implement it now.
 
 ### R8 (moderate) — Preprocessing facts that need to be visible
 
@@ -189,6 +193,23 @@ No code change required unless we add DP. **Add a `PRIVACY_NOTES.md`** stating t
 ### R9 (integrity) — Fabricated audit value
 
 `combined_iid_flower.py:783 / 1000 / 1020` — `test_evaluation_counter` is never incremented, so the guard cannot fail and `"test_evaluations_during_training": 0` is asserted rather than measured. **Make the counter actually increment on every touch of the test set**, keep the guard, and re-run the audit. If the paper claims the test set was untouched during training, this must be a measurement.
+
+### R11 — What does the `direction` field actually encode? **[RESOLVED in S2; the direction-keyed-baseline follow-up is CUT]**
+
+The collection protocol had all subjects walking in a **single direction**, so `direction` should be constant. It is not: `(source, subject, direction)` gives 13 strata against 8 for `(source, subject)`, so the field varies for five of the eight. The arithmetic points at Test_2 being single-valued and all five 20251124 strata being two-valued (3 + 5×2 = 13) — meaning either the second campaign genuinely collected both directions, or the field is derived differently between sources.
+
+**This is load-bearing.** Runs are speed-ordered and blocked within `(source, subject, direction)` strata, so the partitioner — and therefore every federated result — depends on the field meaning what its name says.
+
+**What to check, read-only, before the partitioner rewrite:**
+
+- Distinct `direction` values in `run_manifest.csv`, cross-tabbed by source and subject with run counts.
+- Where in the discovery code the field is derived, and from what.
+- Whether mean walking speed differs between direction values within a subject.
+
+**Then, depending on the outcome:**
+
+- *Labeling artifact* → stratify on `(source, subject)` only, and this item closes.
+- *Real directional variation in 20251124* → a documented protocol difference between the two campaigns, which strengthens the natural non-IID story. It also means direction sits in the residual for half the data, and the CNN can identify direction trivially from the order the hallway sensors activate — so recompute skill against a `(source, subject, direction)`-keyed baseline to check how much of the +0.11 is direction detection rather than gait-speed estimation. Report both baselines in every regression table, plus mean speed by direction per subject.
 
 ### R10 (optional, last, cuttable) — Is the backbone too weak?
 
@@ -237,21 +258,21 @@ Build a single module (e.g. `paper_figures.py`) that produces every figure and t
 
 1. **`plot_dataset_overview`** — speed distribution per subject (violin or strip), annotated with within-subject std, split by source. Shows subject 003 twice, once per source. This figure carries the "92% of variance is subject identity" point.
 2. **`plot_system_diagram_data`** — export the counts needed for the system/pipeline figure (runs, windows, splits per source and subject) as a table; the diagram itself will be drawn in a vector editor.
-3. **`plot_partitions`** — runs per client × subject heatmap or stacked bar, one panel per partition scheme (IID, natural 2-building, Dirichlet α values, speed-band). This is the figure that makes the non-IID contribution legible.
+3. **`plot_partitions`** — runs per client × subject heatmap or stacked bar, one panel per partition scheme (IID, natural cross-session, channel ρ). This is the figure that makes the non-IID contribution legible.
 4. **`plot_convergence`** — metric vs communication round, with **horizontal reference lines for the centralized result and the trivial baseline**, and a band over seeds. Both tasks, IID and non-IID overlaid. *This single figure would have made R1 obvious at a glance; treat it as the highest-value plot in the module.*
 5. **`plot_run_level_scatter`** — predicted vs actual walking speed at run level, identity line, colored/marked by subject, side-by-side panels for centralized / FL / local-only. Annotate RMSE and skill score in-panel.
 6. **`plot_residual_diagnostics`** — Bland–Altman (mean vs difference) against APDM ground truth, plus residual-vs-speed to expose regression-to-the-mean.
 7. **`plot_skill_comparison`** — grouped bar of skill score across {local-only, FedAvg, FedAdam/FedProx, centralized} × {IID, non-IID variants}, with error bars over seeds and a zero line marking the trivial baseline.
 8. **`plot_confusion`** — run-level normalized confusion matrix. Only render for the hardest / non-saturated settings; do not produce four near-identical saturated matrices.
 9. **`plot_communication_cost`** — parameters, MB per round, and rounds-to-reach-95%-of-centralized, as a small two-panel figure. Supports the "feasible" half of the claim.
-10. **`plot_heterogeneity`** — performance vs channel overlap ratio ρ (1.0 → 0.0), with the ρ=0 collapse plotted rather than omitted, a band over the ≥3 random channel assignments, and horizontal reference lines for centralized and local-only. The natural 2-building split appears as a marked point, not a curve. Both evaluation protocols on the same axes (different linestyles).
+10. **`plot_heterogeneity`** — performance vs channel overlap ratio ρ (1.0 → 0.0), with the ρ=0 collapse plotted rather than omitted, a band over the ≥3 random channel assignments, and horizontal reference lines for centralized and local-only. The natural cross-session split appears as a marked point, not a curve. Both evaluation protocols on the same axes (different linestyles).
 
 **Tables to emit** (as LaTeX `booktabs` source *and* CSV, into `tables/`):
 
 - **T1** Dataset: sources, subjects, runs (161 → 140 usable, with the subject-006 exclusion stated), windows per task, split counts, speed mean/std/range **and within-subject std**.
 - **T2** Centralized reference, both tasks, with baseline row and skill score.
 - **T3** FL under IID at **K=2 and K=3**: {centralized, FedAvg, FedAdam, local-only} × both tasks.
-- **T4** FL under non-IID: {natural 2-building (K=2), channel-availability at ρ ∈ {0.67, 0.33, 0.0} (K=3)} × {local-only, FedAvg, robust variant, centralized}. Every row pairs with a matched-K IID row from T3. Channel rows report both evaluation protocols (global 9-channel test and client-masked test).
+- **T4** FL under non-IID: {natural cross-session (K=2), channel-availability at ρ ∈ {0.67, 0.33, 0.0} (K=3)} × {local-only, FedAvg, robust variant, centralized}. Every row pairs with a matched-K IID row from T3. Channel rows report both evaluation protocols (global 9-channel test and client-masked test).
 - **T6** *(optional, cut first)* Centralized architecture comparison: SimpleCNN1D vs small 1D-ResNet, both tasks, centralized only. See §2 R10.
 - **T5** Communication and compute cost.
 - All tables: mean ± std over seeds, and the run-level metric as primary.

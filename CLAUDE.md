@@ -4,7 +4,7 @@ Read this at the start of every session. These facts are authoritative. Any code
 
 ## Project
 
-Federated learning for gait analysis from structural floor vibration, targeting an IEEE conference paper (deadline: ~3 weeks from 2026-08-31). Two tasks on the same windows: **subject identification** (classification) and **walking speed estimation** (regression). The claim is that federated learning across buildings is feasible and useful under IID and non-IID conditions without centralizing raw vibration data.
+Federated learning for gait analysis from structural floor vibration, targeting an IEEE conference paper (deadline: 31 Oct 2026, manuscript complete). Two tasks on the same windows: **subject identification** (classification) and **walking speed estimation** (regression). The claim is that federated learning across data silos is feasible and useful under IID and non-IID conditions without centralizing raw vibration data. **The two sources are the same instrumented corridor 19.6 months apart, not two buildings** — see "Silo framing" below.
 
 Full work plan: `docs/review_response_plan.md`. Sensor detail: `docs/sensor_layout.md`.
 
@@ -16,7 +16,7 @@ Full work plan: `docs/review_response_plan.md`. Sensor detail: `docs/sensor_layo
 | `TestData/20251124_Testing` | 003, 004, 005, 006, 007, 008 | ≈ 1651.61 Hz | `resample_poly(31, 128)` |
 
 - **Subject 006 is excluded from every experiment** (data collection problems). Deliberate, not a bug.
-- **Subject 003 appears in BOTH sources, on different days.** This is a genuine cross-session, cross-building recording of the same person — a scientific asset, not duplication. Never deduplicate it.
+- **Subject 003 appears in BOTH sources, 19.6 months apart.** A genuine cross-session recording of the same person — a scientific asset, not duplication. Never deduplicate it. *Identity is confirmed. The demographics recorded in the `Test_2` HDF5 for subject 003 are erroneous; `testNotes.xlsx` (67 in / 45 y / 137 lb) is authoritative. Do not use the Test_2 HDF5 demographic record for this subject.*
 - Effective subjects: **001, 002, 003, 004, 005, 007, 008 → 7 subjects.** IDs are not contiguous; never assume `range(1, 8)`.
 - Subject identity and source are nearly collinear (003 is the only overlap). This is a known confound; subject 003 is the instrument for addressing it.
 
@@ -62,6 +62,20 @@ The repo contains two pipelines. Every number in the paper comes from the **`com
 These files are moved to `legacy/` with an import guard, along with `config.py`, the legacy scripts, and the legacy test files. Do not run them, do not import them, and do not use them as reference implementations. The shared exceptions are `SimpleCNN1D`, which stays in `models.py`, and `get_parameters`/`set_parameters`, which move to `parameters.py`.
 
 Full findings: `docs/session0_findings.md`.
+
+## Silo framing — the two sources are NOT two buildings
+
+Both sources were recorded on **floor 4 of the Science and Engineering Innovation Center**, in the same corridor, with the same 16 sensors at identical coordinates (verified against the HDF5 sensors tables and independently against `testNotes.xlsx`). `Test_2` is dated 2024-04-06; `20251124_Testing` is 2025-11-24 — **19.6 months apart.**
+
+The K=2 natural split is therefore a **cross-session / cross-campaign** split, not cross-building. It remains a legitimate cross-silo federated scenario, because what differs between the two is substantial and real:
+
+- disjoint subject cohorts (only 003 overlaps)
+- unidirectional (`Test_2`, S→N) vs bidirectional alternating (`20251124`, N→S / S→N by run parity) protocol
+- different DAQ trigger configuration
+- different true sampling rates (1706.667 vs ~1651.61 Hz)
+- 19 months of environmental and structural drift
+
+Never describe this as cross-building in code, comments, docs, or the paper. Cross-building generalization is untested and belongs in future work. The channel-availability experiment (§1.3 of the review plan) is now the only axis standing in for spatial heterogeneity across sites.
 
 ## Working agreement
 
