@@ -14,8 +14,9 @@ have one import rather than four:
    touched during training" a measurement rather than an assertion about a counter that
    was never incremented (R9).
 
-Plus ``assert_channel_index_conversion``, the C1 assertion, which belongs with the other
-things that must be provable rather than merely true.
+Plus ``assert_channel_index_conversion``, the C1 assertion, and ``assert_split_integrity``,
+the §1.1 train/test leakage check, which belong with the other things that must be
+provable rather than merely true.
 
 See ``docs/review_response_plan.md`` §3 and ``CLAUDE.md``.
 """
@@ -520,3 +521,82 @@ def assert_channel_index_conversion(
             "Zero-based index 8 (one-based channel 9, the y axis of the co-located "
             "position-8 unit) must be dropped; channels 8 (x) and 10 (z) are kept."
         )
+
+
+# --------------------------------------------------------------------------------------
+# §1.1 — split integrity, asserted at artifact build time and again at load time
+# --------------------------------------------------------------------------------------
+
+
+def _index_list(value: Any, name: str) -> list[int]:
+    if hasattr(value, "detach"):
+        value = value.detach().cpu().tolist()
+    elif hasattr(value, "tolist"):
+        value = value.tolist()
+    result = [int(index) for index in value]
+    if len(result) != len(set(result)):
+        raise AssertionError(f"{name} contains duplicate indices.")
+    return result
+
+
+def assert_split_integrity(
+    artifact: Any, artifact_name: str = "artifact"
+) -> dict[str, int]:
+    """Measure, and assert, that a window artifact's train/test split cannot leak.
+
+    ``run_uid`` is the indivisible atom (``CLAUDE.md`` invariant 1). With 5 s windows at
+    a 1 s stride, adjacent windows share 4 s of signal, so one run's windows on both sides
+    of the split is direct leakage. Checked here, from the indices and per-window
+    metadata rather than from a summary flag:
+
+    - train and test index lists are duplicate-free and disjoint;
+    - every window belongs to exactly one split (their union covers the metadata);
+    - each window's metadata ``split`` agrees with the list it is in;
+    - no ``run_uid`` has windows in both splits (invariant 2).
+
+    ``artifact`` is any mapping with ``train_indices``, ``test_indices`` and
+    ``metadata``. Returns the measured counts, so callers record a measurement rather
+    than a literal.
+    """
+
+    metadata = artifact["metadata"]
+    train = _index_list(artifact["train_indices"], f"{artifact_name}.train_indices")
+    test = _index_list(artifact["test_indices"], f"{artifact_name}.test_indices")
+
+    window_overlap = set(train) & set(test)
+    if window_overlap:
+        raise AssertionError(
+            f"{artifact_name}: {len(window_overlap)} windows are in both train and test."
+        )
+    if set(train) | set(test) != set(range(len(metadata))):
+        raise AssertionError(
+            f"{artifact_name}: train and test indices do not cover every window exactly "
+            f"once ({len(train)} + {len(test)} indices for {len(metadata)} windows)."
+        )
+
+    run_uids: dict[str, set[str]] = {"train": set(), "test": set()}
+    for split, indices in (("train", train), ("test", test)):
+        for index in indices:
+            item = metadata[index]
+            if str(item.get("split")) != split:
+                raise AssertionError(
+                    f"{artifact_name}: window {index} is listed in {split} but its "
+                    f"metadata says {item.get('split')!r}."
+                )
+            run_uids[split].add(str(item["run_uid"]))
+
+    run_overlap = run_uids["train"] & run_uids["test"]
+    if run_overlap:
+        raise AssertionError(
+            f"{artifact_name}: run leakage between train and test — "
+            f"{len(run_overlap)} runs have windows on both sides: {sorted(run_overlap)[:5]}"
+        )
+
+    return {
+        "num_train_windows": len(train),
+        "num_test_windows": len(test),
+        "num_train_runs": len(run_uids["train"]),
+        "num_test_runs": len(run_uids["test"]),
+        "train_test_window_overlap": len(window_overlap),
+        "train_test_run_overlap": len(run_overlap),
+    }

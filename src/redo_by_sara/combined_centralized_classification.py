@@ -22,6 +22,7 @@ from torch.utils.data import DataLoader, Dataset
 from .guardrails import (
     assert_channel_index_conversion,
     assert_determinism_flags,
+    assert_split_integrity,
     seeding_record,
     set_random_seeds,
 )
@@ -530,15 +531,10 @@ def build_combined_artifact(config: dict[str, Any]) -> dict[str, object]:
     if not train_indices or not test_indices:
         raise RuntimeError("The combined artifact has an empty train or test split.")
 
-    train_run_uids = {
-        metadata[index]["run_uid"] for index in train_indices
-    }
-    test_run_uids = {
-        metadata[index]["run_uid"] for index in test_indices
-    }
-    overlap = train_run_uids & test_run_uids
-    if overlap:
-        raise AssertionError(f"Run leakage between train and test: {sorted(overlap)}")
+    split_audit = assert_split_integrity(
+        {"train_indices": train_indices, "test_indices": test_indices, "metadata": metadata},
+        "classification artifact (build)",
+    )
 
     train_samples = sample_array[train_indices]
     channel_mean = train_samples.mean(axis=(0, 2), keepdims=True)
@@ -595,7 +591,7 @@ def build_combined_artifact(config: dict[str, Any]) -> dict[str, object]:
         "test_ratio": config["test_ratio"],
         "split_seed": config["seed"],
         "timing_assumption": config["timing_assumption"],
-        "train_test_run_overlap": 0,
+        "train_test_run_overlap": split_audit["train_test_run_overlap"],
     }
 
     if summary["num_usable_runs"] != 140:
@@ -852,6 +848,7 @@ def train_and_evaluate(
 ) -> dict[str, Any]:
     seeding = set_random_seeds(config["seed"])
     assert_determinism_flags()
+    assert_split_integrity(artifact, "classification artifact (load)")
     output_dir: Path = config["output_dir"]
     output_dir.mkdir(parents=True, exist_ok=True)
 

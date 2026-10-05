@@ -7,8 +7,10 @@ Two tasks on the same 5-second windows of raw floor-vibration signal:
 3. **Federated learning** — Flower simulation of the above across clients, under IID and
    non-IID conditions.
 
-The claim under test is that federated learning across buildings is feasible and useful
-without centralizing raw vibration data.
+The claim under test is that federated learning across data silos is feasible and useful
+without centralizing raw vibration data. The two silos are two collection campaigns in the
+**same instrumented corridor, 19.6 months apart** — a cross-session split, not two
+buildings. Cross-building generalization is untested and is future work.
 
 **`CLAUDE.md` is the authoritative description of the data and the invariants.** Where
 this README and `CLAUDE.md` disagree, `CLAUDE.md` is right and this file is a bug.
@@ -45,9 +47,9 @@ It raises on import. See `legacy/README.md` for what is wrong with it.
   1706.667 Hz is deliberate. It time-warps every Test_2 window by +3.3% relative to the
   metadata rate, and walking speed is a time-derived quantity, so this matters.
 - **Subject 006 is excluded from every experiment** (data collection problems). Deliberate.
-- **Subject 003 appears in both sources, on different days.** That is a genuine
-  cross-session, cross-building recording of one person and a scientific asset. It is
-  never deduplicated.
+- **Subject 003 appears in both sources, 19.6 months apart.** That is a genuine
+  cross-session recording of one person and a scientific asset. It is never
+  deduplicated.
 - Effective subjects: **001, 002, 003, 004, 005, 007, 008 → 7**. The IDs are not
   contiguous.
 

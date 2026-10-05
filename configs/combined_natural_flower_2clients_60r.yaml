@@ -6,20 +6,20 @@ regression_artifact: artifacts/centralized_combined_regression_9ch_no006_walking
 centralized_classification_dir: artifacts/centralized_combined_9ch_no006_nowalking_80_20_60e
 centralized_regression_dir: artifacts/centralized_combined_residual_runbalanced_9ch_no006_60e
 centralized_absolute_regression_summary: artifacts/centralized_combined_regression_9ch_no006_walking_80_20_60e/training_summary.json
-output_dir: artifacts/combined_iid_flower_3clients_60r
+output_dir: artifacts/combined_natural_flower_2clients_60r
 
 federated:
   framework: flower
   aggregation: FedAvg
   # iid: speed-ordered round-robin within (source, subject, direction) strata, K in {2, 3}.
   # natural: one client per collection campaign (K=2); same corridor, 19.6 months apart.
-  partition_scheme: iid
-  num_clients: 3
+  partition_scheme: natural
+  num_clients: 2
   num_rounds: 60
   local_epochs: 1
   fraction_fit: 1.0
   fraction_evaluate: 0.0
-  min_available_clients: 3
+  min_available_clients: 2
   accept_failures: false
   client_num_cpus: 4
   client_num_gpus: 0.0

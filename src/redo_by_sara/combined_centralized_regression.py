@@ -28,6 +28,7 @@ from .combined_centralized_classification import (
 from .guardrails import (
     assert_channel_index_conversion,
     assert_determinism_flags,
+    assert_split_integrity,
     check_regression_health,
     seeding_record,
     set_random_seeds,
@@ -244,8 +245,10 @@ def build_regression_artifact(config: dict[str, Any]) -> dict[str, object]:
     test_indices = [index for index, item in enumerate(metadata) if item["split"] == "test"]
     train_run_uids = {metadata[index]["run_uid"] for index in train_indices}
     test_run_uids = {metadata[index]["run_uid"] for index in test_indices}
-    if train_run_uids & test_run_uids:
-        raise AssertionError("Regression run leakage detected between train and test.")
+    split_audit = assert_split_integrity(
+        {"train_indices": train_indices, "test_indices": test_indices, "metadata": metadata},
+        "regression artifact (build)",
+    )
 
     train_samples = sample_array[train_indices]
     channel_mean = train_samples.mean(axis=(0, 2), keepdims=True)
@@ -317,7 +320,7 @@ def build_regression_artifact(config: dict[str, Any]) -> dict[str, object]:
             np.asarray([speed_by_uid[uid] for uid in sorted(test_run_uids)])
         ),
         "speed_distribution_by_subject": speed_by_subject,
-        "train_test_run_overlap": 0,
+        "train_test_run_overlap": split_audit["train_test_run_overlap"],
     }
 
     expected = {
@@ -641,6 +644,7 @@ def train_and_evaluate_regression(
 ) -> dict[str, Any]:
     seeding = set_random_seeds(config["seed"])
     assert_determinism_flags()
+    assert_split_integrity(artifact, "regression artifact (load)")
     output_dir: Path = config["output_dir"]
     output_dir.mkdir(parents=True, exist_ok=True)
     train_indices = artifact["train_indices"].tolist()

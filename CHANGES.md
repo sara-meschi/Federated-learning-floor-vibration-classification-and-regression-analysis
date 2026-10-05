@@ -4,6 +4,202 @@ What changed, and every number that moved as a result. Newest first.
 
 ---
 
+## Session 2 — K-parameterized partitioner, natural split, property assertions (2026-10-04/05)
+
+Branch `s2-partitioner`. Covers `docs/review_response_plan.md` §1.1, §1.2, §3 item 3 and B7,
+and closes R11. Four rulings amended the plan:
+
+- the root `CLAUDE.md` was already updated;
+- the Test_2 S→N relabel is cut (recorded in the docs only, artifacts not rebuilt);
+- the R11 direction-keyed baseline is cut;
+- the reference run is an end-to-end smoke test, not a bitwise reference.
+
+### Numbers that moved
+
+**No reference number in `CLAUDE.md` changed.** 161 discovered → 15 excluded + 6 skipped →
+140 usable → 112 train / 28 test; classification 1549 (1242/307); regression 1204
+(966/238); held-out class support `[69, 32, 43, 56, 25, 25, 27, 30]`. The canonical artifacts
+were not rebuilt, and the split code is untouched.
+
+**The K=3 IID client partition moved.** The new partitioner is a different algorithm, and
+the old triple was an artifact of a brute-force search pinned to its own output (review
+plan §3 item 3: "the exact triple no longer needs to be reproduced").
+
+| K=3 IID, per client | before (retired) | after |
+|---|---|---|
+| runs | (37, 38, 37) | (37, 38, 37) |
+| classification windows | (412, 418, 412) | (413, 421, 408) |
+| regression (walking) windows | (321, 324, 321) | (321, 328, 317) |
+| no-walking windows | (91, 94, 91) | (92, 93, 91) |
+| 20251124 runs per client, N→S / S→N | 10 / 10 each | (9/10, 11/10, 10/10) |
+
+The run counts land on the same triple by coincidence of the round-robin; the run
+*assignment* differs. The old partitioner forced exactly 10 runs per direction per
+client. The new one guarantees that every client holds every
+`(source, subject, direction)` stratum and that totals are within one run, which is the
+property §3 item 3 asks for.
+
+**New partitions, measured and now pinned in tests:**
+
+| scheme | K | runs | classification windows | regression windows | no-walking |
+|---|---|---|---|---|---|
+| IID | 2 | (56, 56) | (618, 624) | (480, 486) | (138, 138) |
+| natural | 2 | (52, 60) | (587, 655) | (431, 535) | (156, 120) |
+
+Natural: `client_0` = `test_2`, which holds subjects 001, 002, 003. `client_1` =
+`testing_20251124`, which holds 003, 004, 005, 007, 008.
+
+Test count: **39 → 69 passed** (`-m "not requires_data"`: 32 → 56).
+
+### 1. Partitioner rewrite (`combined_iid_fl_partitioning.py`)
+
+**Removed:**
+
+- the nine `EXPECTED_*` outcome tables and `CLIENT_IDS`;
+- `_base_counts_from_blocks`, `_remainder_assignments` (the `itertools.product`
+  brute force), `_solve_subject_blocks` (the rank-minimizing DP) and `_assign_profiles`;
+- the `num_clients != 3`, `seed != 4601` and `112/28` guards.
+
+**New entry point:** `build_combined_partitions(..., scheme, num_clients, seed)`, with
+`scheme ∈ {iid, natural}` and K ∈ {2, 3} (K > 3 is refused, per §1.2).
+`build_combined_iid_partitions` is kept as a wrapper, so existing callers keep working.
+
+- **IID** is a round-robin over speed-ordered blocks of K within each
+  `(source, subject, direction)` stratum. Each complete block gives one run to every
+  client, through a seeded permutation. Remainder runs go to distinct least-loaded
+  clients, which keeps totals within one. A stratum with fewer than K training runs is
+  refused, because no IID partition can cover it.
+- **The docstring records why direction is a stratum key: signal coverage, not speed
+  balance.** Speed is direction-invariant (R11), but direction reverses the order in which
+  the corridor sensors are excited.
+- **Natural** is one client per collection campaign, in sorted source order. The two
+  campaigns are the same corridor 19.6 months apart, a cross-session split.
+
+**Assertions are layered by scheme.**
+
+- *All schemes:*
+  - client run and window sets are disjoint and cover the training set exactly once;
+  - no client owns a test run;
+  - both tasks give every run the same owner;
+  - every window a client owns maps back to one of its runs (measured from the window
+    metadata);
+  - subject 006 is absent.
+- *IID only:*
+  - run spread ≤ 1;
+  - every client holds every subject and every stratum;
+  - no client holds all runs of any subject;
+  - every complete block is split one per client.
+- *Natural only:* each client holds exactly one source.
+- **Balance and coverage are deliberately not asserted for the natural split.** Its
+  3-vs-5 subject coverage and 52/60 sizes are the heterogeneity under study.
+
+The summary is now `schema_version: 2`. It gains `scheme`, `client_sources` (natural) and
+`direction_stratification_reason` (IID), and its audit keys name the checks that actually ran.
+
+### 2. Split integrity (§1.1)
+
+New `guardrails.assert_split_integrity`. It measures, from the indices and the per-window
+metadata:
+
+- duplicate-free, disjoint index lists;
+- every window in exactly one split;
+- the metadata `split` agrees with the list each window is in;
+- no run has windows on both sides.
+
+It returns the measured counts.
+
+- **Build time:** both artifact builders now call it, in place of their inline run-overlap
+  checks. `train_test_run_overlap` in the summary is the measured value instead of a
+  literal `0`. The value is unchanged, so the artifacts were not rebuilt; the code path
+  runs on the next rebuild.
+- **Load time:** called by the partitioner, the federated setup audit (which previously
+  trusted the summary flag), the residual regression validator, and both centralized
+  trainers.
+- **Tests:** a deliberately leaky split (two windows of one run on opposite sides) fires
+  it, both directly and through the partitioner. So do a window in both lists, a window in
+  neither, and a metadata/index disagreement.
+
+### 3. Federated runner (`combined_iid_flower.py`)
+
+**Config validator.** The hard 3 clients / 60 rounds / 1 local epoch rejection is gone.
+It now requires:
+
+- `num_clients ∈ {2, 3}`;
+- `num_rounds ≥ 1` and `local_epochs ≥ 1`;
+- a new `federated.partition_scheme` (default `iid`), with `natural` requiring K=2.
+
+FedAvg-only is kept; that is S3's job.
+
+**Outcome pins replaced by properties:**
+
+- `total_runs != 112` → equals the artifact's unique train runs;
+- `(1242, 307)` / `(966, 238)` → the summary must agree with the measured split;
+- `expected_support = [69, …]` → equals the support counted from the artifact's test
+  targets;
+- `!= 28` → equals the artifact's unique test runs.
+
+All of those literals now live in `test_combined_iid_fl_partitioning.py`.
+
+**Names.** Experiment names and the partition plot title are derived from K and the
+scheme, and the "three-client" wording is gone.
+
+**Configs.** `configs/combined_iid_flower_3clients_60r.yaml` gains
+`partition_scheme: iid`. New `configs/combined_natural_flower_2clients_60r.yaml` (natural,
+K=2, writing to `artifacts/combined_natural_flower_2clients_60r/`) has not been run at
+60 rounds; S5 runs it.
+
+The centralized-builder pins (140 / 112 / 28 / 1204) are untouched.
+
+### 4. Documentation
+
+- `docs/session0_findings.md` gains a "Session 2 findings" section:
+  - **R11:** the cross-tab, the derivation, testNotes 96/96, the HDF5 field blank on
+    91/96, and the physical centroid-timing check (95/96, all 65 Test_2 runs one sign =
+    S→N). Speed-by-direction: max |Δ| 0.028 m/s, pooled p = 0.15.
+  - **The corridor:** one corridor, two campaigns 19.6 months apart.
+  - **Subject 003:** identity confirmed; the Test_2 HDF5 demographics are erroneous.
+  - **Sensor 3:** HDF5 905 in vs testNotes 805 in, unresolved.
+  - **Disposition table:** C2 → cut, B7 → done.
+- `docs/sensor_layout.md` §3 gains the corridor coordinate table and records sensor 3 as
+  unresolved (805 is consistent with monotone ordering). It drops "Confirmed against the
+  layout" and records the Test_2 S→N finding. `docs/review_response_plan.md` §1.3 drops the
+  same "confirmed against the drawing" claim.
+- **No cross-building framing remains.** Fixed in `README.md:10` and `:49`, two
+  comments in `test_guardrails.py`, and `legacy/README.md:22`.
+- **Test_2 S→N, recorded but not applied.** The pipeline keeps `single_direction_unknown`. A
+  new test proves a relabel would not move the seed-4601 split: the single-direction branch
+  of `_direction_balanced_test_records` seeds from the stratum key alone.
+
+### End-to-end smoke test (replaces the planned bitwise reference run)
+
+Both configs ran with `--task both --rounds 2 --allow-degenerate` into scratch.
+Production `artifacts/` was not written.
+
+- Both runs, both tasks: exit 0.
+- Partition files and the balance plot were written; the summaries report `iid` K=3
+  (37/38/37) and `natural` K=2 (52/60).
+- `test_evaluations_during_training: 0` in every run.
+- **Regression at 2 rounds is still the unfixed R1 behaviour.** It is not a result:
+
+| run | final standardized MSE | distinct residuals | skill vs subject mean | detector |
+|---|---|---|---|---|
+| IID K=3 | 1.000051 | 238 | +0.0014 | degeneracy ✓, skill ✗ → failed, override stamped |
+| natural K=2 | 1.000114 | 238 | +0.0014 | degeneracy ✓, skill ✗ → failed, override stamped |
+
+  The degeneracy gate passes after 2 rounds only because the zero-initialized head has
+  barely moved off zero. The skill gate fails. Its skill-score condition (+0.0014 > 0)
+  passes, but its standardized-MSE condition (needs < 0.95, got 1.0001) does not. That
+  condition is what flags these runs invalid at this point, which is the case the
+  detector's two-part skill gate exists for.
+- Classification macro-F1 after 2 rounds is 0.046 in both runs, which is chance: the model
+  has not trained yet.
+
+**These numbers only show that the plumbing works for both schemes at both K.**
+
+- `--verify-only` on both configs exits 0 and creates no output directory.
+- `pytest` from the repo root: **69 passed**. `-m "not requires_data"`: **56 passed**,
+  13 deselected.
+
 ## Session 1 — WP0 guardrails and legacy quarantine (2026-09-03/04)
 
 Branch `wp0-guardrails`. `docs/review_response_plan.md` §3 items 1, 2, 4, 5, plus R8, R9,

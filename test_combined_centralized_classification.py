@@ -74,3 +74,25 @@ def test_source_aware_80_20_run_split() -> None:
         if record.subject_id == "003" and split_by_uid[record.run_uid] == "test"
     }
     assert subject_003_sources == {"test_2", "testing_20251124"}
+
+
+def test_test_2_direction_label_does_not_move_the_split() -> None:
+    """Test_2 is unidirectional and physically S->N (docs/session0_findings.md, R11).
+
+    The pipeline keeps the label ``single_direction_unknown``. This proves a relabel
+    would not move the canonical split: the single-direction branch seeds its shuffle
+    from the (source, subject) stratum alone, not from the direction string.
+    """
+
+    counts = {("test_2", "001"): 21, ("test_2", "002"): 23, ("test_2", "003"): 21}
+
+    def split_with(label: str) -> dict[str, str]:
+        records = [
+            _record(source, subject, run_index, label)
+            for (source, subject), count in counts.items()
+            for run_index in range(count)
+        ]
+        return assign_run_splits(records, seed=4601, test_ratio=0.2)
+
+    assert split_with("single_direction_unknown") == split_with("S_to_N")
+

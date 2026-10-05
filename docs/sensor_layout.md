@@ -1,6 +1,6 @@
 # Sensor layout and channel map
 
-Source: instrumentation drawing at `docs/figures/sensor_layout.png`. **Verify the corridor ordering in §3 against the drawing before relying on it.**
+Source: instrumentation drawing at `docs/figures/sensor_layout.png`, the HDF5 `experiment/sensors` tables, and `TestData/20251124_Testing/testNotes.xlsx`. **The corridor ordering in §3 has one unresolved coordinate (sensor 3); read §3 before relying on it.**
 
 ## 1. Full channel map (20 channels, 16 sensors)
 
@@ -50,7 +50,18 @@ NUMPY_INDICES     = [0, 1, 2, 3, 4, 5, 6, 7, 9]
 
 ## 3. Spatial ordering along the corridor
 
-In the drawing, positions 1 → 8 run monotonically down the corridor, with position 8 at the end of the line. **Contiguous position blocks are therefore contiguous corridor segments**, which is what makes the spatial-block partition scheme physically meaningful ("each site instruments one stretch of hallway") rather than an arbitrary grouping. Confirmed against the layout.
+In the drawing, positions 1 → 8 run down the corridor, with position 8 at the end of the line. **Contiguous position blocks are contiguous corridor segments**, which is what makes the spatial-block partition scheme physically meaningful ("each site instruments one stretch of hallway") rather than an arbitrary grouping.
+
+Corridor coordinate `location_y` (inches), from the HDF5 `experiment/sensors` table. The table is identical in both sources (`Test_2` and `20251124_Testing`), field for field, apart from the DAQ trigger configuration:
+
+| Position | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 (ch 8, 10) |
+|---|---|---|---|---|---|---|---|---|
+| `location_y` (in) | 991 | 886 | **905 / 805** | 739 | 553 | 372 | 234 | 103 |
+| `location_x` (in) | 83.0 | 0.3 | 84.0 | 0.3 | 83.0 | 30.0 | 84.0 | 0.0 |
+
+**Sensor 3 is unresolved.** The HDF5 tables give `location_y = 905 in`; `testNotes.xlsx` gives **805 in** for the same serial (72538). One of the two is a transcription error, and neither source settles which. 805 is consistent with monotone ordering down the corridor (991 > 886 > 805 > 739 > …); 905 would place sensor 3 between sensors 1 and 2. Either way, the K=3 contiguous blocks {1,2,3} / {4,5,6} / {7,8} remain contiguous corridor segments, so the partition scheme does not depend on the answer. Any claim that needs strict monotone ordering of all eight positions does. Sensors also alternate sides of the corridor (`location_x` ≈ 0 vs ≈ 84 in), so "position" means distance along the corridor, not a centreline point.
+
+**Walking direction in this frame.** `20251124_Testing` alternates N→S / S→N by run-index parity (verified 96/96 against `testNotes.xlsx`). `Test_2` is unidirectional, and its direction is recoverable as **S→N** from the vibration itself. Recovering it is meaningful only because the corridor and sensor coordinates are identical across the two campaigns. The pipeline still labels Test_2 runs `single_direction_unknown`; the relabel was not applied, to avoid rebuilding the canonical artifacts. See `docs/session0_findings.md` § "Session 2 findings".
 
 K=3 disjoint (ρ=0) assignment:
 

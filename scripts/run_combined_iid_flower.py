@@ -21,7 +21,7 @@ from redo_by_sara.combined_iid_flower import (
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
-            "Run the leakage-safe, three-client Flower IID experiments on the "
+            "Run the leakage-safe, K-client (IID or natural) Flower experiments on the "
             "combined Test_2 and 20251124_Testing artifacts."
         )
     )

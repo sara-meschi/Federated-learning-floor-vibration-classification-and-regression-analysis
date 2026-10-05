@@ -1,4 +1,4 @@
-"""Plots for the combined-data, three-client IID Flower experiments.
+"""Plots for the combined-data, K-client Flower experiments (IID and natural splits).
 
 The functions in this module deliberately accept ordinary dictionaries/lists or
 CSV/JSON paths.  Keeping plotting separate from Flower makes the result files
@@ -179,7 +179,7 @@ def plot_classification_training_comparison(
     """Compare FL post-round global-train metrics with centralized training.
 
     FL metrics are expected to be a global-model evaluation over the union of
-    the three client training partitions after aggregation, not local minibatch
+    the client training partitions after aggregation, not local minibatch
     metrics.  The legend and title make this semantic difference explicit.
     """
 
@@ -990,7 +990,8 @@ def plot_partition_balance(summary: MappingInput, output_path: PathLike) -> Path
     for axis in axes.flat:
         if axis.axison:
             axis.grid(axis="y", alpha=0.2)
-    figure.suptitle("Three-client Approximate-IID Training Partition Audit")
+    scheme = _load_mapping(summary).get("scheme", "iid")
+    figure.suptitle(f"{len(rows)}-client {scheme} Training Partition Audit")
     return _save_close(figure, output_path)
 
 

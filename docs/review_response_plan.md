@@ -92,7 +92,7 @@ Log **positions per client and channels per client separately** — the client h
 
 **Two cautions:**
 
-- Positions are **not exchangeable**, but they are spatially ordered: positions 1 → 8 run monotonically down the corridor (confirmed against the layout drawing), so contiguous position blocks are contiguous corridor segments. Use **contiguous spatial blocks** as the primary scheme. Orientation also varies — channel 8 is the only horizontal-axis channel, so whichever client holds position 8 sees an extra, qualitatively different view of the same footstep. Report over **≥3 random position assignments** so no single layout drives the number, and log which client holds position 8.
+- Positions are **not exchangeable**, but they are spatially ordered: positions 1 → 8 run down the corridor (one coordinate, sensor 3, is unresolved between two records — see `docs/sensor_layout.md` §3; the contiguous blocks hold either way), so contiguous position blocks are contiguous corridor segments. Use **contiguous spatial blocks** as the primary scheme. Orientation also varies — channel 8 is the only horizontal-axis channel, so whichever client holds position 8 sees an extra, qualitatively different view of the same footstep. Report over **≥3 random position assignments** so no single layout drives the number, and log which client holds position 8.
 - Decide and report the **evaluation protocol** explicitly, both variants: (a) global test set with all 9 channels — does federation recover full-sensor performance? (b) client-local test with the client's own mask — deployment reality. A reviewer will ask which number they are reading.
 
 Normalization statistics stay global (train windows, all channels) for comparability across ρ; note this choice in the paper.

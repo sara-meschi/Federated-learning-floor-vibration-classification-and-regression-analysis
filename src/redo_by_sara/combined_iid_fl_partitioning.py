@@ -1,17 +1,44 @@
-"""Leakage-safe, shared IID client partitioning for the combined experiments.
+"""Leakage-safe client partitioning for the combined federated experiments.
 
 The indivisible partitioning unit in this module is a *complete recording run*.
 Classification and regression windows from the same ``run_uid`` are therefore
 always owned by the same client.  This is important because adjacent five-second
 windows overlap by four seconds in the combined artifacts.
 
-The experiment is intentionally fixed to the three-client, seed-4601 design used
-for the combined nine-channel data.  Within every
-``(source, subject, direction)`` stratum, runs are ordered by APDM gait speed and
-placed into neighboring blocks of three.  Each complete block contributes one
-run to every client.  Deterministic, seed-derived tie breaking assigns the small
-remainders and the members of each block while meeting the audited run and
-window totals.
+Two schemes, both over the K clients of a real ``num_clients`` parameter (K <= 3,
+``docs/review_response_plan.md`` §1.2):
+
+``iid``
+    Within every ``(source, subject, direction)`` stratum, runs are ordered by APDM
+    gait speed and dealt round-robin in blocks of K: each complete block gives exactly
+    one run to every client, through a seeded permutation, and each remainder run goes
+    to a distinct client with the fewest runs so far.  Run counts end within one of
+    balanced, and every client sees every stratum across the whole speed range.
+
+    The third stratum key, ``direction``, is there for **signal coverage, not speed
+    balance**.  R11 showed walking speed is direction-invariant (max |delta| 0.028 m/s
+    against a within-stratum std of 0.032 m/s), so stratifying on direction buys no
+    speed balance at all.  What it buys is that direction reverses the order in which
+    the corridor sensors are excited: a client that only ever saw N->S passes would
+    be trained on one temporal ordering of the footstep wavefront across the nine
+    channels and may fail on S->N.  Keying the strata on direction guarantees every
+    client sees both orderings wherever a source recorded both (``20251124_Testing``
+    alternates by run parity; ``Test_2`` is unidirectional, S->N, and contributes a
+    single direction value per subject).  See ``docs/session0_findings.md``.
+
+``natural``
+    One client per collection campaign: ``test_2`` -> ``client_0``,
+    ``testing_20251124`` -> ``client_1`` (K must equal the number of sources, 2).
+    Both campaigns are the same instrumented corridor 19.6 months apart, so this is a
+    cross-session / cross-silo split, not a cross-building one.  Its client sizes are
+    uneven and its subject coverage is deliberately incomplete (3 subjects vs 5):
+    that heterogeneity is the point, so the IID balance and coverage properties are
+    *not* asserted for it.
+
+Properties asserted for every scheme: client run and window sets are disjoint and
+together cover the training set exactly once; no client owns a held-out test run;
+both tasks give every run the same owner; every window a client owns belongs to one
+of its runs; excluded subjects are absent.
 """
 
 from __future__ import annotations
@@ -27,41 +54,20 @@ from typing import Any, Mapping, Sequence
 
 import numpy as np
 
+from .guardrails import assert_split_integrity
 
-CLIENT_IDS = ("client_0", "client_1", "client_2")
-EXPECTED_SUBJECTS = ("001", "002", "003", "004", "005", "007", "008")
-EXPECTED_SOURCE_SUBJECT_GROUPS = (
-    "test_2:001",
-    "test_2:002",
-    "test_2:003",
-    "testing_20251124:003",
-    "testing_20251124:004",
-    "testing_20251124:005",
-    "testing_20251124:007",
-    "testing_20251124:008",
-)
-EXPECTED_RUN_COUNTS = (37, 38, 37)
-EXPECTED_REGRESSION_WINDOW_COUNTS = (321, 324, 321)
-EXPECTED_NO_WALKING_WINDOW_COUNTS = (91, 94, 91)
-EXPECTED_CLASSIFICATION_WINDOW_COUNTS = (412, 418, 412)
-EXPECTED_SUBJECT_RUN_COUNTS: dict[str, tuple[int, int, int]] = {
-    "001": (6, 6, 5),
-    "002": (6, 6, 6),
-    "003": (9, 10, 10),
-    "004": (4, 4, 4),
-    "005": (5, 4, 4),
-    "007": (3, 4, 4),
-    "008": (4, 4, 4),
-}
-EXPECTED_WALKING_CLASS_COUNTS: dict[str, tuple[int, int, int]] = {
-    "001": (54, 55, 47),
-    "002": (50, 49, 52),
-    "003": (76, 79, 83),
-    "004": (34, 34, 34),
-    "005": (41, 35, 33),
-    "007": (28, 35, 35),
-    "008": (38, 37, 37),
-}
+
+PARTITION_SCHEMES = ("iid", "natural")
+#: §1.2: with 112 training runs, K > 3 leaves ~4 optimizer steps per local epoch at
+#: batch size 4, which structurally reproduces the R1 collapse.
+MAX_CLIENTS = 3
+#: Subject 006 is excluded from every experiment (data collection problems). Asserted
+#: absent here as a property of any partition, not as an expected outcome.
+EXCLUDED_SUBJECT_IDS = ("006",)
+
+
+def client_ids_for(num_clients: int) -> tuple[str, ...]:
+    return tuple(f"client_{index}" for index in range(num_clients))
 
 
 @dataclass(frozen=True)
@@ -86,6 +92,10 @@ class _RunProfile:
     regression_indices: tuple[int, ...]
     walking_classification_indices: tuple[int, ...]
     no_walking_classification_indices: tuple[int, ...]
+
+    @property
+    def stratum(self) -> tuple[str, str, str]:
+        return (self.source_id, self.subject_id, self.direction)
 
     @property
     def walking_windows(self) -> int:
@@ -142,25 +152,12 @@ def _metadata_by_run(
 def _split_run_uids(
     artifact: Mapping[str, Any], artifact_name: str
 ) -> tuple[set[str], set[str], tuple[int, ...], tuple[int, ...]]:
+    # Load-time half of CLAUDE.md invariant 2; the build-time half runs in the builders.
+    assert_split_integrity(artifact, f"{artifact_name} artifact (partition load)")
     train_indices = _indices(artifact["train_indices"], f"{artifact_name}.train_indices")
     test_indices = _indices(artifact["test_indices"], f"{artifact_name}.test_indices")
-    if set(train_indices) & set(test_indices):
-        raise AssertionError(f"{artifact_name} train/test indices overlap.")
-    train_metadata = _metadata_by_run(artifact, train_indices, artifact_name)
-    test_metadata = _metadata_by_run(artifact, test_indices, artifact_name)
-    train_uids = set(train_metadata)
-    test_uids = set(test_metadata)
-    overlap = train_uids & test_uids
-    if overlap:
-        raise AssertionError(
-            f"{artifact_name} has run leakage between train and test: {sorted(overlap)}"
-        )
-    for index in train_indices:
-        if str(artifact["metadata"][index].get("split")) != "train":
-            raise AssertionError(f"{artifact_name} train index {index} is not marked train.")
-    for index in test_indices:
-        if str(artifact["metadata"][index].get("split")) != "test":
-            raise AssertionError(f"{artifact_name} test index {index} is not marked test.")
+    train_uids = set(_metadata_by_run(artifact, train_indices, artifact_name))
+    test_uids = set(_metadata_by_run(artifact, test_indices, artifact_name))
     return train_uids, test_uids, train_indices, test_indices
 
 
@@ -278,236 +275,97 @@ def _seed_rank(seed: int, *parts: Any) -> int:
     return int.from_bytes(hashlib.blake2b(payload, digest_size=8).digest(), "big")
 
 
-def _form_speed_blocks(
-    profiles: Mapping[str, _RunProfile], num_clients: int
-) -> tuple[
-    list[tuple[tuple[str, str, str], tuple[_RunProfile, ...]]],
-    list[tuple[tuple[str, str, str], tuple[_RunProfile, ...]]],
-]:
+def _speed_ordered_strata(
+    profiles: Mapping[str, _RunProfile],
+) -> list[tuple[tuple[str, str, str], list[_RunProfile]]]:
     by_stratum: dict[tuple[str, str, str], list[_RunProfile]] = defaultdict(list)
     for profile in profiles.values():
-        by_stratum[(profile.source_id, profile.subject_id, profile.direction)].append(
-            profile
-        )
-
-    blocks: list[tuple[tuple[str, str, str], tuple[_RunProfile, ...]]] = []
-    remainders: list[tuple[tuple[str, str, str], tuple[_RunProfile, ...]]] = []
-    for stratum, stratum_profiles in sorted(by_stratum.items()):
-        ordered = sorted(
-            stratum_profiles, key=lambda item: (item.speed_mps, item.run_uid)
-        )
-        complete_count = len(ordered) // num_clients * num_clients
-        for start in range(0, complete_count, num_clients):
-            blocks.append((stratum, tuple(ordered[start : start + num_clients])))
-        if complete_count < len(ordered):
-            remainders.append((stratum, tuple(ordered[complete_count:])))
-    return blocks, remainders
+        by_stratum[profile.stratum].append(profile)
+    return [
+        (stratum, sorted(members, key=lambda item: (item.speed_mps, item.run_uid)))
+        for stratum, members in sorted(by_stratum.items())
+    ]
 
 
-def _base_counts_from_blocks(
-    blocks: Sequence[tuple[tuple[str, str, str], tuple[_RunProfile, ...]]],
-) -> tuple[
-    dict[str, list[int]], dict[str, list[int]], dict[tuple[str, str], list[int]]
-]:
-    subject_counts = {subject_id: [0, 0, 0] for subject_id in EXPECTED_SUBJECTS}
-    source_counts: dict[str, list[int]] = defaultdict(lambda: [0, 0, 0])
-    direction_counts: dict[tuple[str, str], list[int]] = defaultdict(lambda: [0, 0, 0])
-    for (source_id, subject_id, direction), _ in blocks:
-        for client_index in range(3):
-            subject_counts[subject_id][client_index] += 1
-            source_counts[source_id][client_index] += 1
-            direction_counts[(source_id, direction)][client_index] += 1
-    return subject_counts, source_counts, direction_counts
-
-
-def _remainder_assignments(
-    blocks: Sequence[tuple[tuple[str, str, str], tuple[_RunProfile, ...]]],
-    remainders: Sequence[tuple[tuple[str, str, str], tuple[_RunProfile, ...]]],
-    seed: int,
-) -> list[dict[str, int]]:
-    subject_base, source_base, direction_base = _base_counts_from_blocks(blocks)
-    options: list[
-        list[tuple[tuple[str, str, str], tuple[_RunProfile, ...], tuple[int, ...]]]
-    ] = []
-    for stratum, records in remainders:
-        assignments = list(itertools.permutations(range(3), len(records)))
-        assignments.sort(
-            key=lambda assignment: _seed_rank(
-                seed,
-                *stratum,
-                *(record.run_uid for record in records),
-                *assignment,
-            )
-        )
-        options.append([(stratum, records, assignment) for assignment in assignments])
-
-    valid: list[tuple[int, dict[str, int]]] = []
-    for selection in itertools.product(*options):
-        subject_counts = {key: value.copy() for key, value in subject_base.items()}
-        source_counts = {key: value.copy() for key, value in source_base.items()}
-        direction_counts = {key: value.copy() for key, value in direction_base.items()}
-        assignment_by_uid: dict[str, int] = {}
-        for _, records, assignments in selection:
-            for record, client_index in zip(records, assignments):
-                assignment_by_uid[record.run_uid] = client_index
-                subject_counts[record.subject_id][client_index] += 1
-                source_counts.setdefault(record.source_id, [0, 0, 0])[client_index] += 1
-                direction_counts.setdefault(
-                    (record.source_id, record.direction), [0, 0, 0]
-                )[client_index] += 1
-
-        run_counts = [len(blocks) + sum(value == index for value in assignment_by_uid.values())
-                      for index in range(3)]
-        if tuple(run_counts) != EXPECTED_RUN_COUNTS:
-            continue
-        if any(tuple(subject_counts[subject]) != EXPECTED_SUBJECT_RUN_COUNTS[subject]
-               for subject in EXPECTED_SUBJECTS):
-            continue
-        if tuple(source_counts.get("test_2", [])) != (17, 18, 17):
-            continue
-        for direction in ("N_to_S", "S_to_N"):
-            if tuple(direction_counts.get(("testing_20251124", direction), [])) != (
-                10,
-                10,
-                10,
-            ):
-                break
-        else:
-            rank = sum(
-                _seed_rank(seed, run_uid, client_index)
-                for run_uid, client_index in assignment_by_uid.items()
-            )
-            valid.append((rank, assignment_by_uid))
-    valid.sort(key=lambda item: item[0])
-    return [assignment for _, assignment in valid]
-
-
-def _solve_subject_blocks(
-    subject_blocks: Sequence[tuple[tuple[str, str, str], tuple[_RunProfile, ...]]],
-    initial_windows: Sequence[int],
-    target_windows: Sequence[int],
-    seed: int,
-) -> list[tuple[int, ...]] | None:
-    """Find deterministic block permutations that hit exact per-subject totals."""
-
-    permutations = list(itertools.permutations(range(3)))
-    # Only the first two counts need to be keys; the third follows from the total.
-    states: dict[tuple[int, int], tuple[int, list[tuple[int, ...]]]] = {
-        (int(initial_windows[0]), int(initial_windows[1])): (0, [])
+def _block_audit_row(
+    block_number: int | None,
+    stratum: tuple[str, str, str],
+    block: Sequence[_RunProfile],
+    owners: Sequence[int],
+) -> dict[str, Any]:
+    return {
+        "block_number": block_number,
+        "source_id": stratum[0],
+        "subject_id": stratum[1],
+        "direction": stratum[2],
+        "size": len(block),
+        "minimum_speed_mps": min(record.speed_mps for record in block),
+        "maximum_speed_mps": max(record.speed_mps for record in block),
+        "run_to_client": {
+            record.run_uid: f"client_{owner}" for record, owner in zip(block, owners)
+        },
     }
-    cumulative_windows = int(sum(initial_windows))
-    for block_index, (stratum, block) in enumerate(subject_blocks):
-        cumulative_windows += sum(record.walking_windows for record in block)
-        choices: list[tuple[int, tuple[int, ...], tuple[int, int, int]]] = []
-        for permutation in permutations:
-            additions = [0, 0, 0]
-            for record, client_index in zip(block, permutation):
-                additions[client_index] += record.walking_windows
-            rank = _seed_rank(seed, *stratum, block_index, *permutation)
-            choices.append((rank, permutation, tuple(additions)))
-        choices.sort(key=lambda item: item[0])
-
-        next_states: dict[tuple[int, int], tuple[int, list[tuple[int, ...]]]] = {}
-        for (count_0, count_1), (path_rank, path) in states.items():
-            for choice_rank, permutation, additions in choices:
-                next_0 = count_0 + additions[0]
-                next_1 = count_1 + additions[1]
-                next_2 = cumulative_windows - next_0 - next_1
-                if (
-                    next_0 > target_windows[0]
-                    or next_1 > target_windows[1]
-                    or next_2 > target_windows[2]
-                ):
-                    continue
-                key = (next_0, next_1)
-                candidate_rank = path_rank + choice_rank
-                if key not in next_states or candidate_rank < next_states[key][0]:
-                    next_states[key] = (candidate_rank, [*path, permutation])
-        states = next_states
-
-    solution = states.get((int(target_windows[0]), int(target_windows[1])))
-    return None if solution is None else solution[1]
 
 
-def _assign_profiles(
+def _assign_iid(
     profiles: Mapping[str, _RunProfile], num_clients: int, seed: int
 ) -> tuple[dict[str, int], list[dict[str, Any]]]:
-    blocks, remainders = _form_speed_blocks(profiles, num_clients)
-    remainder_candidates = _remainder_assignments(blocks, remainders, seed)
-    if not remainder_candidates:
-        raise RuntimeError("No remainder allocation satisfies the fixed IID audit targets.")
+    """Round-robin over speed-ordered blocks of K within each stratum."""
 
-    final_assignment: dict[str, int] | None = None
-    for remainder_assignment in remainder_candidates:
-        assignment = remainder_assignment.copy()
-        complete = True
-        for subject_id in EXPECTED_SUBJECTS:
-            subject_blocks = [block for block in blocks if block[0][1] == subject_id]
-            initial_windows = [0, 0, 0]
-            for run_uid, client_index in remainder_assignment.items():
-                profile = profiles[run_uid]
-                if profile.subject_id == subject_id:
-                    initial_windows[client_index] += profile.walking_windows
-            permutations = _solve_subject_blocks(
-                subject_blocks=subject_blocks,
-                initial_windows=initial_windows,
-                target_windows=EXPECTED_WALKING_CLASS_COUNTS[subject_id],
-                seed=seed,
-            )
-            if permutations is None:
-                complete = False
-                break
-            for (_, block), permutation in zip(subject_blocks, permutations):
-                for profile, client_index in zip(block, permutation):
-                    assignment[profile.run_uid] = client_index
-        if complete and set(assignment) == set(profiles):
-            final_assignment = assignment
-            break
-    if final_assignment is None:
-        raise RuntimeError(
-            "No speed-block allocation satisfies the fixed run and window audit targets."
-        )
-
+    assignment: dict[str, int] = {}
+    run_totals = [0] * num_clients
     block_audit: list[dict[str, Any]] = []
-    for block_number, (stratum, block) in enumerate(blocks):
-        owners = [final_assignment[record.run_uid] for record in block]
-        if set(owners) != set(range(num_clients)):
-            raise AssertionError(f"Complete speed block {block_number} is not split 1/client.")
-        block_audit.append(
-            {
-                "block_number": block_number,
-                "source_id": stratum[0],
-                "subject_id": stratum[1],
-                "direction": stratum[2],
-                "size": len(block),
-                "minimum_speed_mps": min(record.speed_mps for record in block),
-                "maximum_speed_mps": max(record.speed_mps for record in block),
-                "run_to_client": {
-                    record.run_uid: CLIENT_IDS[final_assignment[record.run_uid]]
-                    for record in block
-                },
-            }
+    complete_block_number = 0
+    for stratum, ordered in _speed_ordered_strata(profiles):
+        if len(ordered) < num_clients:
+            raise AssertionError(
+                f"Stratum {stratum} has {len(ordered)} training runs, fewer than "
+                f"K={num_clients}; an IID partition cannot give every client a run of it."
+            )
+        for start in range(0, len(ordered), num_clients):
+            block = ordered[start : start + num_clients]
+            if len(block) == num_clients:
+                # A complete block: one run to every client, permuted by seed so no
+                # client systematically gets the slowest member of each block.
+                owners = sorted(
+                    range(num_clients),
+                    key=lambda client: _seed_rank(seed, *stratum, start, client),
+                )
+                block_number: int | None = complete_block_number
+                complete_block_number += 1
+            else:
+                # A remainder: distinct clients, fewest runs first, ties by seed. Taking
+                # the r least-loaded clients keeps every client's total within one.
+                owners = sorted(
+                    range(num_clients),
+                    key=lambda client: (
+                        run_totals[client],
+                        _seed_rank(seed, *stratum, "remainder", client),
+                    ),
+                )[: len(block)]
+                block_number = None
+            for record, owner in zip(block, owners):
+                assignment[record.run_uid] = owner
+                run_totals[owner] += 1
+            block_audit.append(_block_audit_row(block_number, stratum, block, owners))
+    return assignment, block_audit
+
+
+def _assign_natural(
+    profiles: Mapping[str, _RunProfile], num_clients: int
+) -> tuple[dict[str, int], list[str]]:
+    """One client per collection campaign, in sorted source order."""
+
+    sources = sorted({profile.source_id for profile in profiles.values()})
+    if len(sources) != num_clients:
+        raise ValueError(
+            f"The natural partition needs one client per source: {len(sources)} sources "
+            f"({sources}) but num_clients={num_clients}."
         )
-    for stratum, records in remainders:
-        owners = [final_assignment[record.run_uid] for record in records]
-        if len(owners) != len(set(owners)):
-            raise AssertionError(f"Remainder stratum {stratum} duplicates a client.")
-        block_audit.append(
-            {
-                "block_number": None,
-                "source_id": stratum[0],
-                "subject_id": stratum[1],
-                "direction": stratum[2],
-                "size": len(records),
-                "minimum_speed_mps": min(record.speed_mps for record in records),
-                "maximum_speed_mps": max(record.speed_mps for record in records),
-                "run_to_client": {
-                    record.run_uid: CLIENT_IDS[final_assignment[record.run_uid]]
-                    for record in records
-                },
-            }
-        )
-    return final_assignment, block_audit
+    assignment = {
+        run_uid: sources.index(profile.source_id) for run_uid, profile in profiles.items()
+    }
+    return assignment, sources
 
 
 def _speed_distribution(values: Sequence[float]) -> dict[str, float | int]:
@@ -521,16 +379,17 @@ def _speed_distribution(values: Sequence[float]) -> dict[str, float | int]:
     }
 
 
-def _audit_and_summarize(
+def _assert_common_properties(
     partitions: Sequence[ClientPartition],
     profiles: Mapping[str, _RunProfile],
-    assignment: Mapping[str, int],
-    block_audit: Sequence[Mapping[str, Any]],
+    classification_artifact: Mapping[str, Any],
+    regression_artifact: Mapping[str, Any],
     classification_train_indices: Sequence[int],
     regression_train_indices: Sequence[int],
     test_uids: set[str],
-    seed: int,
 ) -> dict[str, Any]:
+    """Properties every scheme must satisfy (CLAUDE.md invariants 1-3)."""
+
     expected_train_uids = set(profiles)
     run_sets = [set(partition.run_uids) for partition in partitions]
     classification_sets = [set(partition.classification_indices) for partition in partitions]
@@ -539,7 +398,7 @@ def _audit_and_summarize(
     pairwise_run_overlap = 0
     pairwise_classification_overlap = 0
     pairwise_regression_overlap = 0
-    for left, right in itertools.combinations(range(3), 2):
+    for left, right in itertools.combinations(range(len(partitions)), 2):
         pairwise_run_overlap += len(run_sets[left] & run_sets[right])
         pairwise_classification_overlap += len(
             classification_sets[left] & classification_sets[right]
@@ -566,138 +425,279 @@ def _audit_and_summarize(
     if any(run_set & test_uids for run_set in run_sets):
         raise AssertionError("A client owns a held-out test run.")
 
-    client_summaries: list[dict[str, Any]] = []
-    for client_index, partition in enumerate(partitions):
+    # Run atomicity, measured from the windows rather than inferred from construction:
+    # every window a client owns, in either task, belongs to one of that client's runs.
+    for partition, run_set in zip(partitions, run_sets):
+        for task, artifact, indices in (
+            ("classification", classification_artifact, partition.classification_indices),
+            ("regression", regression_artifact, partition.regression_indices),
+        ):
+            window_runs = {str(artifact["metadata"][index]["run_uid"]) for index in indices}
+            if window_runs != run_set:
+                raise AssertionError(
+                    f"{partition.client_id} {task} windows come from runs "
+                    f"{sorted(window_runs ^ run_set)[:5]} that it does not own exactly."
+                )
+
+    present_excluded = sorted(
+        {profile.subject_id for profile in profiles.values()} & set(EXCLUDED_SUBJECT_IDS)
+    )
+    if present_excluded:
+        raise AssertionError(f"Excluded subjects present in training runs: {present_excluded}.")
+
+    return {
+        "classification_and_regression_train_run_sets_identical": True,
+        "classification_and_regression_test_run_sets_identical": True,
+        "canonical_source_aware_run_uids": True,
+        "pairwise_client_run_overlap": pairwise_run_overlap,
+        "pairwise_client_classification_window_overlap": pairwise_classification_overlap,
+        "pairwise_client_regression_window_overlap": pairwise_regression_overlap,
+        "client_run_union_equals_all_training_runs": True,
+        "classification_window_coverage_exactly_once": True,
+        "regression_window_coverage_exactly_once": True,
+        "train_test_run_overlap": len(expected_train_uids & test_uids),
+        "test_runs_owned_by_clients": sum(len(run_set & test_uids) for run_set in run_sets),
+        "same_run_owner_for_both_tasks": True,
+        "client_windows_belong_to_client_runs": True,
+        "excluded_subjects_absent": list(EXCLUDED_SUBJECT_IDS),
+    }
+
+
+def _assert_iid_properties(
+    partitions: Sequence[ClientPartition],
+    profiles: Mapping[str, _RunProfile],
+    block_audit: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """IID-only properties (CLAUDE.md invariant 4, review plan §3 item 3)."""
+
+    run_counts = [len(partition.run_uids) for partition in partitions]
+    if max(run_counts) - min(run_counts) > 1:
+        raise AssertionError(f"IID client run counts are not within one: {run_counts}.")
+
+    all_subjects = {profile.subject_id for profile in profiles.values()}
+    all_strata = {profile.stratum for profile in profiles.values()}
+    subject_totals = Counter(profile.subject_id for profile in profiles.values())
+    for partition in partitions:
         client_profiles = [profiles[run_uid] for run_uid in partition.run_uids]
-        subjects = sorted({profile.subject_id for profile in client_profiles})
-        source_subject_groups = sorted(
-            {f"{profile.source_id}:{profile.subject_id}" for profile in client_profiles}
-        )
-        subject_run_counts = Counter(profile.subject_id for profile in client_profiles)
-        source_subject_run_counts = Counter(
-            f"{profile.source_id}:{profile.subject_id}" for profile in client_profiles
-        )
-        direction_run_counts = Counter(
-            f"{profile.source_id}:{profile.direction}" for profile in client_profiles
-        )
-        source_run_counts = Counter(profile.source_id for profile in client_profiles)
-        walking_class_counts = Counter()
-        for profile in client_profiles:
-            walking_class_counts[f"subject_{profile.subject_id}_walking"] += (
-                profile.walking_windows
+        subject_counts = Counter(profile.subject_id for profile in client_profiles)
+        missing_subjects = all_subjects - set(subject_counts)
+        if missing_subjects:
+            raise AssertionError(
+                f"{partition.client_id} holds no run of subjects {sorted(missing_subjects)}."
             )
-        no_walking_count = sum(profile.no_walking_windows for profile in client_profiles)
-        classification_class_counts = {
+        missing_strata = all_strata - {profile.stratum for profile in client_profiles}
+        if missing_strata:
+            raise AssertionError(
+                f"{partition.client_id} holds no run of strata {sorted(missing_strata)}."
+            )
+        hoarded = [
+            subject for subject, count in subject_counts.items()
+            if count == subject_totals[subject]
+        ]
+        if hoarded:
+            raise AssertionError(
+                f"{partition.client_id} holds every training run of subjects {hoarded}."
+            )
+
+    for block in block_audit:
+        if block["block_number"] is not None and len(set(block["run_to_client"].values())) != len(
+            partitions
+        ):
+            raise AssertionError(f"Complete speed block {block['block_number']} is not 1/client.")
+
+    return {
+        "client_run_count_spread": max(run_counts) - min(run_counts),
+        "every_client_holds_every_subject": True,
+        "every_client_holds_every_source_subject_direction_stratum": True,
+        "no_client_holds_all_runs_of_a_subject": True,
+        "complete_speed_blocks_split_one_per_client": True,
+    }
+
+
+def _assert_natural_properties(
+    partitions: Sequence[ClientPartition],
+    profiles: Mapping[str, _RunProfile],
+    sources: Sequence[str],
+) -> dict[str, Any]:
+    """Natural-only properties. Balance and subject coverage are deliberately absent."""
+
+    for partition, source_id in zip(partitions, sources):
+        client_sources = {profiles[run_uid].source_id for run_uid in partition.run_uids}
+        if client_sources != {source_id}:
+            raise AssertionError(
+                f"{partition.client_id} must hold exactly source {source_id!r}, "
+                f"holds {sorted(client_sources)}."
+            )
+    return {
+        "one_source_per_client": True,
+        "each_source_in_exactly_one_client": True,
+    }
+
+
+def _client_summary(
+    partition: ClientPartition, profiles: Mapping[str, _RunProfile]
+) -> dict[str, Any]:
+    client_profiles = [profiles[run_uid] for run_uid in partition.run_uids]
+    walking_class_counts: Counter[str] = Counter()
+    for profile in client_profiles:
+        walking_class_counts[f"subject_{profile.subject_id}_walking"] += profile.walking_windows
+    no_walking_count = sum(profile.no_walking_windows for profile in client_profiles)
+    return {
+        "client_id": partition.client_id,
+        "num_runs": len(client_profiles),
+        "num_classification_windows": len(partition.classification_indices),
+        "num_regression_windows": len(partition.regression_indices),
+        "num_walking_windows": sum(profile.walking_windows for profile in client_profiles),
+        "num_no_walking_windows": no_walking_count,
+        "subjects": sorted({profile.subject_id for profile in client_profiles}),
+        "source_subject_groups": sorted(
+            {f"{profile.source_id}:{profile.subject_id}" for profile in client_profiles}
+        ),
+        "subject_run_counts": dict(
+            sorted(Counter(profile.subject_id for profile in client_profiles).items())
+        ),
+        "source_run_counts": dict(
+            sorted(Counter(profile.source_id for profile in client_profiles).items())
+        ),
+        "source_subject_run_counts": dict(
+            sorted(
+                Counter(
+                    f"{profile.source_id}:{profile.subject_id}" for profile in client_profiles
+                ).items()
+            )
+        ),
+        "direction_run_counts": dict(
+            sorted(
+                Counter(
+                    f"{profile.source_id}:{profile.direction}" for profile in client_profiles
+                ).items()
+            )
+        ),
+        "classification_class_window_counts": {
             "no_walking": no_walking_count,
             **dict(sorted(walking_class_counts.items())),
-        }
-        walking_count = sum(profile.walking_windows for profile in client_profiles)
+        },
+        "run_speed_distribution": _speed_distribution(
+            [profile.speed_mps for profile in client_profiles]
+        ),
+        "run_uids": list(partition.run_uids),
+    }
 
-        if subjects != list(EXPECTED_SUBJECTS):
-            raise AssertionError(
-                f"{partition.client_id} does not contain every subject: {subjects}."
-            )
-        if source_subject_groups != list(EXPECTED_SOURCE_SUBJECT_GROUPS):
-            raise AssertionError(
-                f"{partition.client_id} does not contain all eight source/subject groups."
-            )
-        if len(client_profiles) != EXPECTED_RUN_COUNTS[client_index]:
-            raise AssertionError(f"Unexpected run count for {partition.client_id}.")
-        if walking_count != EXPECTED_REGRESSION_WINDOW_COUNTS[client_index]:
-            raise AssertionError(f"Unexpected walking-window count for {partition.client_id}.")
-        if no_walking_count != EXPECTED_NO_WALKING_WINDOW_COUNTS[client_index]:
-            raise AssertionError(f"Unexpected no-walking count for {partition.client_id}.")
-        if len(partition.classification_indices) != EXPECTED_CLASSIFICATION_WINDOW_COUNTS[
-            client_index
-        ]:
-            raise AssertionError(
-                f"Unexpected classification-window count for {partition.client_id}."
-            )
-        if len(partition.regression_indices) != EXPECTED_REGRESSION_WINDOW_COUNTS[
-            client_index
-        ]:
-            raise AssertionError(f"Unexpected regression-window count for {partition.client_id}.")
-        for subject_id in EXPECTED_SUBJECTS:
-            if subject_run_counts[subject_id] != EXPECTED_SUBJECT_RUN_COUNTS[subject_id][
-                client_index
-            ]:
-                raise AssertionError(
-                    f"Unexpected {subject_id} run count for {partition.client_id}."
-                )
-            if walking_class_counts[f"subject_{subject_id}_walking"] != (
-                EXPECTED_WALKING_CLASS_COUNTS[subject_id][client_index]
-            ):
-                raise AssertionError(
-                    f"Unexpected {subject_id} window count for {partition.client_id}."
-                )
-        for direction in ("N_to_S", "S_to_N"):
-            if direction_run_counts[f"testing_20251124:{direction}"] != 10:
-                raise AssertionError(
-                    f"{partition.client_id} must have 10 newer-dataset {direction} runs."
-                )
 
-        client_summaries.append(
-            {
-                "client_id": partition.client_id,
-                "num_runs": len(client_profiles),
-                "num_classification_windows": len(partition.classification_indices),
-                "num_regression_windows": len(partition.regression_indices),
-                "num_walking_windows": walking_count,
-                "num_no_walking_windows": no_walking_count,
-                "subjects": subjects,
-                "source_subject_groups": source_subject_groups,
-                "subject_run_counts": dict(sorted(subject_run_counts.items())),
-                "source_run_counts": dict(sorted(source_run_counts.items())),
-                "source_subject_run_counts": dict(sorted(source_subject_run_counts.items())),
-                "direction_run_counts": dict(sorted(direction_run_counts.items())),
-                "classification_class_window_counts": classification_class_counts,
-                "run_speed_distribution": _speed_distribution(
-                    [profile.speed_mps for profile in client_profiles]
-                ),
-                "run_uids": list(partition.run_uids),
-            }
+def build_combined_partitions(
+    classification_artifact: Mapping[str, Any],
+    regression_artifact: Mapping[str, Any],
+    scheme: str = "iid",
+    num_clients: int = 3,
+    seed: int = 4601,
+) -> tuple[list[ClientPartition], dict[str, Any]]:
+    """Build a run-atomic client partition shared by both tasks, plus its audit.
+
+    The returned indices refer to the original, global artifact tensors.  Local
+    training code may shuffle those indices after partitioning, but must not
+    reassign individual windows to another client.
+    """
+
+    if scheme not in PARTITION_SCHEMES:
+        raise ValueError(f"Unknown partition scheme {scheme!r}; expected {PARTITION_SCHEMES}.")
+    if not 2 <= num_clients <= MAX_CLIENTS:
+        raise ValueError(
+            f"num_clients must be 2 or 3, got {num_clients}. K > {MAX_CLIENTS} leaves too few "
+            "local optimizer steps per client (review plan §1.2)."
         )
 
-    run_to_client = {
-        run_uid: CLIENT_IDS[client_index]
-        for run_uid, client_index in sorted(assignment.items())
-    }
-    return {
-        "schema_version": 1,
-        "experiment": "combined_3client_run_grouped_approximate_iid",
+    (
+        profiles,
+        classification_train_indices,
+        regression_train_indices,
+        test_uids,
+    ) = _build_run_profiles(classification_artifact, regression_artifact)
+
+    sources: list[str] = []
+    block_audit: list[dict[str, Any]] = []
+    if scheme == "iid":
+        assignment, block_audit = _assign_iid(profiles, num_clients, seed)
+    else:
+        assignment, sources = _assign_natural(profiles, num_clients)
+
+    client_ids = client_ids_for(num_clients)
+    partitions: list[ClientPartition] = []
+    for client_index, client_id in enumerate(client_ids):
+        run_uids = tuple(
+            sorted(run_uid for run_uid, owner in assignment.items() if owner == client_index)
+        )
+        partitions.append(
+            ClientPartition(
+                client_id=client_id,
+                run_uids=run_uids,
+                classification_indices=tuple(
+                    sorted(
+                        index
+                        for run_uid in run_uids
+                        for index in profiles[run_uid].classification_indices
+                    )
+                ),
+                regression_indices=tuple(
+                    sorted(
+                        index
+                        for run_uid in run_uids
+                        for index in profiles[run_uid].regression_indices
+                    )
+                ),
+            )
+        )
+
+    audits = _assert_common_properties(
+        partitions=partitions,
+        profiles=profiles,
+        classification_artifact=classification_artifact,
+        regression_artifact=regression_artifact,
+        classification_train_indices=classification_train_indices,
+        regression_train_indices=regression_train_indices,
+        test_uids=test_uids,
+    )
+    if scheme == "iid":
+        audits.update(_assert_iid_properties(partitions, profiles, block_audit))
+    else:
+        audits.update(_assert_natural_properties(partitions, profiles, sources))
+
+    summary: dict[str, Any] = {
+        "schema_version": 2,
+        "experiment": f"combined_{num_clients}client_run_grouped_{scheme}",
+        "scheme": scheme,
         "seed": seed,
-        "num_clients": 3,
-        "client_ids": list(CLIENT_IDS),
+        "num_clients": num_clients,
+        "client_ids": list(client_ids),
         "partition_unit": "complete_run_before_window_shuffling",
-        "stratification_fields": ["source_id", "subject_id", "direction"],
-        "speed_block_size": 3,
-        "speed_ordering": "ascending_APDM_mean_left_right_gait_speed_then_run_uid",
         "canonical_run_uid": "{source_id}:{subject_id_3_digits}:{run_index_3_digits}",
-        "num_training_runs": len(expected_train_uids),
+        "num_training_runs": len(profiles),
         "num_test_runs": len(test_uids),
         "num_classification_training_windows": len(classification_train_indices),
         "num_regression_training_windows": len(regression_train_indices),
-        "clients": client_summaries,
-        "run_to_client": run_to_client,
-        "speed_blocks": list(block_audit),
-        "audits": {
-            "classification_and_regression_train_run_sets_identical": True,
-            "classification_and_regression_test_run_sets_identical": True,
-            "canonical_source_aware_run_uids": True,
-            "pairwise_client_run_overlap": pairwise_run_overlap,
-            "pairwise_client_classification_window_overlap": pairwise_classification_overlap,
-            "pairwise_client_regression_window_overlap": pairwise_regression_overlap,
-            "client_run_union_equals_all_training_runs": True,
-            "classification_window_coverage_exactly_once": True,
-            "regression_window_coverage_exactly_once": True,
-            "train_test_run_overlap": 0,
-            "test_runs_owned_by_clients": 0,
-            "same_run_owner_for_both_tasks": True,
-            "all_subjects_present_on_every_client": True,
-            "all_source_subject_groups_present_on_every_client": True,
-            "newer_source_each_direction_runs_per_client": 10,
+        "clients": [_client_summary(partition, profiles) for partition in partitions],
+        "run_to_client": {
+            run_uid: client_ids[owner] for run_uid, owner in sorted(assignment.items())
         },
+        "audits": audits,
     }
+    if scheme == "iid":
+        summary.update(
+            {
+                "stratification_fields": ["source_id", "subject_id", "direction"],
+                "direction_stratification_reason": (
+                    "signal coverage, not speed balance: direction reverses the order in "
+                    "which corridor sensors are excited; speed is direction-invariant (R11)"
+                ),
+                "speed_block_size": num_clients,
+                "speed_ordering": "ascending_APDM_mean_left_right_gait_speed_then_run_uid",
+                "speed_blocks": block_audit,
+            }
+        )
+    else:
+        summary["client_sources"] = {
+            client_ids[index]: source_id for index, source_id in enumerate(sources)
+        }
+    return partitions, summary
 
 
 def build_combined_iid_partitions(
@@ -706,78 +706,15 @@ def build_combined_iid_partitions(
     num_clients: int = 3,
     seed: int = 4601,
 ) -> tuple[list[ClientPartition], dict[str, Any]]:
-    """Build the shared three-client run partition and its leakage audit.
+    """The IID scheme of :func:`build_combined_partitions`, kept for existing callers."""
 
-    The returned indices refer to the original, global artifact tensors.  Local
-    training code may shuffle those indices after partitioning, but must not
-    reassign individual windows to another client.
-    """
-
-    if num_clients != 3:
-        raise ValueError("The combined IID experiment is fixed to exactly three clients.")
-    if seed != 4601:
-        raise ValueError("The audited combined IID experiment is fixed to seed 4601.")
-
-    (
-        profiles,
-        classification_train_indices,
-        regression_train_indices,
-        test_uids,
-    ) = _build_run_profiles(classification_artifact, regression_artifact)
-    if len(profiles) != 112 or len(test_uids) != 28:
-        raise AssertionError(
-            f"Expected 112 training and 28 test runs; found {len(profiles)}/{len(test_uids)}."
-        )
-    if sorted({profile.subject_id for profile in profiles.values()}) != list(
-        EXPECTED_SUBJECTS
-    ):
-        raise AssertionError("The combined artifact has an unexpected subject set.")
-    source_subject_groups = sorted(
-        {f"{profile.source_id}:{profile.subject_id}" for profile in profiles.values()}
-    )
-    if source_subject_groups != list(EXPECTED_SOURCE_SUBJECT_GROUPS):
-        raise AssertionError("The combined artifact has unexpected source/subject groups.")
-
-    assignment, block_audit = _assign_profiles(profiles, num_clients, seed)
-    partitions: list[ClientPartition] = []
-    for client_index, client_id in enumerate(CLIENT_IDS):
-        run_uids = tuple(
-            sorted(run_uid for run_uid, owner in assignment.items() if owner == client_index)
-        )
-        classification_indices = tuple(
-            sorted(
-                index
-                for run_uid in run_uids
-                for index in profiles[run_uid].classification_indices
-            )
-        )
-        regression_indices = tuple(
-            sorted(
-                index
-                for run_uid in run_uids
-                for index in profiles[run_uid].regression_indices
-            )
-        )
-        partitions.append(
-            ClientPartition(
-                client_id=client_id,
-                run_uids=run_uids,
-                classification_indices=classification_indices,
-                regression_indices=regression_indices,
-            )
-        )
-
-    summary = _audit_and_summarize(
-        partitions=partitions,
-        profiles=profiles,
-        assignment=assignment,
-        block_audit=block_audit,
-        classification_train_indices=classification_train_indices,
-        regression_train_indices=regression_train_indices,
-        test_uids=test_uids,
+    return build_combined_partitions(
+        classification_artifact,
+        regression_artifact,
+        scheme="iid",
+        num_clients=num_clients,
         seed=seed,
     )
-    return partitions, summary
 
 
 def save_combined_iid_partitions(
@@ -810,4 +747,3 @@ def save_combined_iid_partitions(
         "run_manifest": manifest_path,
         "summary": summary_path,
     }
-

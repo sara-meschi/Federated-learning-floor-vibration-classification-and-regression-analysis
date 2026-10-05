@@ -24,6 +24,7 @@ from redo_by_sara.guardrails import (
     TestSetAccessGuard,
     assert_channel_index_conversion,
     assert_determinism_flags,
+    assert_split_integrity,
     check_regression_health,
     determinism_flags,
     seeding_record,
@@ -141,7 +142,7 @@ def _r1_collapse_case() -> dict[str, object]:
 
     Eight is below the threshold of 10, so gating on the speed does catch *this* collapse.
     It catches it by a margin of two, on a quantity that counts strata in the lookup table
-    rather than anything the network did. A third building, or a few more subjects, puts
+    rather than anything the network did. A third campaign, or a few more subjects, puts
     the stratum count over 10 and a completely constant model walks through. Gating on the
     residual gives 1 regardless of how many strata exist.
     """
@@ -229,7 +230,7 @@ def test_gating_on_reported_speed_is_diluted_by_the_baseline_lookup() -> None:
     )
     assert diluted["distinct_predictions"] == NUM_SOURCE_SUBJECT_STRATA == 8
 
-    # With one more building's worth of strata the same constant model clears the
+    # With one more campaign's worth of strata the same constant model clears the
     # threshold entirely, and a speed-gated detector goes quiet.
     rng = np.random.default_rng(9)
     strata = rng.uniform(1.0, 1.5, size=12)
@@ -433,3 +434,67 @@ def test_dropped_y_axis_channel_must_stay_dropped() -> None:
 def test_wrong_channel_count_fires() -> None:
     with pytest.raises(AssertionError, match="a priori hallway selection"):
         assert_channel_index_conversion(list(range(1, 21)), list(range(20)))
+
+
+# ----------------------------------------------------------------------------------
+# §1.1 Split integrity
+# ----------------------------------------------------------------------------------
+
+
+def _clean_split() -> dict:
+    """Two runs per split, two windows per run."""
+
+    metadata = []
+    for split, runs in (("train", ("a:001:000", "a:001:001")), ("test", ("a:001:002", "a:001:003"))):
+        for run_uid in runs:
+            metadata.extend({"run_uid": run_uid, "split": split} for _ in range(2))
+    return {
+        "metadata": metadata,
+        "train_indices": torch.tensor([0, 1, 2, 3]),
+        "test_indices": torch.tensor([4, 5, 6, 7]),
+    }
+
+
+def test_clean_split_passes_and_reports_measured_counts() -> None:
+    assert assert_split_integrity(_clean_split()) == {
+        "num_train_windows": 4,
+        "num_test_windows": 4,
+        "num_train_runs": 2,
+        "num_test_runs": 2,
+        "train_test_window_overlap": 0,
+        "train_test_run_overlap": 0,
+    }
+
+
+def test_two_windows_of_one_run_on_opposite_sides_fires() -> None:
+    """The deliberately leaky split §1.1 asks for: window 1 moves to test, so run
+    a:001:000 has one window on each side."""
+
+    leaky = _clean_split()
+    leaky["metadata"][1]["split"] = "test"
+    leaky["train_indices"] = torch.tensor([0, 2, 3])
+    leaky["test_indices"] = torch.tensor([1, 4, 5, 6, 7])
+    with pytest.raises(AssertionError, match="run leakage"):
+        assert_split_integrity(leaky)
+
+
+def test_window_in_both_splits_fires() -> None:
+    leaky = _clean_split()
+    leaky["test_indices"] = torch.tensor([3, 4, 5, 6, 7])
+    with pytest.raises(AssertionError, match="both train and test"):
+        assert_split_integrity(leaky)
+
+
+def test_window_in_neither_split_fires() -> None:
+    leaky = _clean_split()
+    leaky["test_indices"] = torch.tensor([4, 5, 6])
+    with pytest.raises(AssertionError, match="exactly once"):
+        assert_split_integrity(leaky)
+
+
+def test_metadata_split_disagreeing_with_index_list_fires() -> None:
+    leaky = _clean_split()
+    leaky["metadata"][0]["split"] = "test"
+    with pytest.raises(AssertionError, match="metadata says"):
+        assert_split_integrity(leaky)
+

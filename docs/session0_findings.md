@@ -1,6 +1,7 @@
 # Session 0 findings — contradictions with CLAUDE.md
 
-Produced in Session 0 (orientation, no code changes) per `docs/claude_code_sessions.md`.
+Produced in Session 0 (orientation, no code changes) per the original eight-session runbook,
+since superseded by `docs/claude_code_sessions_v2.md`. Session 2 findings are appended at the end.
 Referenced from `CLAUDE.md` § "The legacy pipeline is quarantined".
 
 **Scope.** Everything here contradicts the authoritative "Data" or "Signal processing" sections of
@@ -26,9 +27,9 @@ Every item below is in the **legacy** stack, its 17 configs, or the docs.
 | A5 window replicated across clients | Session 1 | quarantine |
 | A6 out-of-hallway channels, slicing, K=4 | Session 1 | quarantine; superseded by Session 5 |
 | B1–B6 stale README / PLAN claims | Session 1 | doc fixes |
-| B7 stale partitioner docstring | Session 2 | rewrite with the K-parameterized partitioner |
+| B7 stale partitioner docstring | Session 2 | rewritten with the K-parameterized partitioner |
 | C1 unasserted channel index conversion | Session 1 | add the assertion |
-| C2 multiple sources of truth | Session 2 | one constants module |
+| C2 multiple sources of truth | — | **cut** (runbook v2 cut list) |
 | C3 masking design | Session 1 | quarantine the wrong approach; decision recorded in `CLAUDE.md` |
 | C4 missing repo infrastructure | Sessions 1 and 8 | see item |
 
@@ -292,3 +293,136 @@ failure is upstream of aggregation.
 
 Federated `predicted_speed_mps` takes exactly 8 distinct values, one per source/subject train mean,
 each shifted by −0.0002014: the model is the lookup table minus 0.2 mm/s.
+
+---
+
+## Session 2 findings — direction (R11), site framing, subject 003, sensor 3
+
+Read-only investigation done at the start of Session 2, before any partitioner code. Rulings
+are recorded with each item.
+
+### R11 — the `direction` field is derived, but real
+
+**Where it comes from.** `_direction_for_run` at
+`src/redo_by_sara/combined_centralized_classification.py:178` is called from
+`discover_run_records` at `:278`. The field is **not read from the data**. It is computed from
+run-index parity under a per-source config key `direction_mode`:
+
+- `test_2` → `single_direction_unknown`
+- `testing_20251124` → `alternating_north_south`, where `run_index % 2 == 0` → `N_to_S`
+
+**Cross-tab, runs by (source, subject) × direction.** Totals: 161 discovered = 15 excluded +
+6 skipped + 112 train + 28 test.
+
+| source | subj | direction | all | usable | train | test | skipped |
+|---|---|---|---|---|---|---|---|
+| test_2 | 001 | single_direction_unknown | 21 | 21 | 17 | 4 | 0 |
+| test_2 | 002 | single_direction_unknown | 23 | 23 | 18 | 5 | 0 |
+| test_2 | 003 | single_direction_unknown | 21 | 21 | 17 | 4 | 0 |
+| testing_20251124 | 003 | N_to_S / S_to_N | 8 / 7 | 8 / 7 | 6 / 6 | 2 / 1 | 0 / 0 |
+| testing_20251124 | 004 | N_to_S / S_to_N | 8 / 7 | 8 / 7 | 6 / 6 | 2 / 1 | 0 / 0 |
+| testing_20251124 | 005 | N_to_S / S_to_N | 9 / 9 | 9 / 7 | 7 / 6 | 2 / 1 | 0 / 2 |
+| testing_20251124 | 006 *(excluded)* | N_to_S / S_to_N | 8 / 7 | 0 / 0 | — | — | — |
+| testing_20251124 | 007 | N_to_S / S_to_N | 8 / 7 | 7 / 7 | 5 / 6 | 2 / 1 | 1 / 0 |
+| testing_20251124 | 008 | N_to_S / S_to_N | 9 / 9 | 7 / 8 | 6 / 6 | 1 / 2 | 2 / 1 |
+
+5 of the 8 usable `(source, subject)` strata carry two directions; all 3 `test_2` strata carry
+one. That is 3 + 5×2 = 13 three-part strata.
+
+**Three independent lines of evidence show the alternation is genuine:**
+
+1. **Protocol notes.** `TestData/20251124_Testing/testNotes.xlsx` states the protocol: *"Each
+   trial in alternate directions: Trial 1 Starting N-->S, Trial 2 S --> N"*, and *"Prior dataset
+   was NOT bi-directional, one dir only."* It has a per-run Direction column for all 96 runs of
+   subjects 003–008, which agrees with the parity rule **96/96**, including the replacement trials
+   for 005 and 008.
+2. **Raw metadata.** The HDF5 `Direction` field for 20251124 is blank on 91 of 96 runs, and the 5
+   non-blank entries all read `n-s`. The notes explain why: *"The peramiters did not save to the
+   hdf5 files."* That is why the pipeline had to reconstruct the field.
+3. **Physical check from the vibration itself**, independent of both. For each run, take the
+   energy-weighted centroid time at corridor sensors 1–7 and regress it on sensor `location_y`.
+   The sign of the slope says which end the walk started from. The signs alternate strictly with
+   run parity: **95/96 agree** with the spreadsheet, and the one mismatch is excluded subject 006.
+   **All 65 `test_2` runs share a single slope sign**, which confirms that source is
+   unidirectional. In the 2025 campaign's frame that sign is **S→N**. Comparing the two
+   campaigns this way is meaningful because the corridor and the sensor coordinates are identical
+   (see the corridor finding below).
+
+**Speed does not differ by direction within a subject.** APDM speed, usable runs, m/s:
+
+| subject (20251124) | n (N→S / S→N) | mean N→S | mean S→N | Δ | Welch t | perm p |
+|---|---|---|---|---|---|---|
+| 003 | 8 / 7 | 1.4537 | 1.4814 | −0.0277 | −1.43 | 0.18 |
+| 004 | 8 / 7 | 1.4900 | 1.4814 | +0.0086 | +0.65 | 0.56 |
+| 005 | 9 / 7 | 1.6422 | 1.6536 | −0.0113 | −0.99 | 0.38 |
+| 007 | 7 / 7 | 1.3307 | 1.3507 | −0.0200 | −0.51 | 0.63 |
+| 008 | 7 / 8 | 1.4086 | 1.4256 | −0.0171 | −0.96 | 0.36 |
+
+Pooling within subjects gives Δ = −0.0133 m/s, Welch t = −1.45, permutation p = 0.15. The
+largest |Δ| is 0.028 m/s, against a mean within-stratum speed std of 0.032 m/s and an overall
+speed spread of 0.153 m/s. Four of five signs are negative, so a real effect below 0.03 m/s is
+possible, but this dataset cannot resolve it.
+
+**Rulings.**
+
+- **Keep the three-part `(source, subject, direction)` stratum key.** The reason is signal
+  coverage, not speed balance. Direction reverses the order in which the corridor sensors
+  activate, so a client that only ever sees N→S may fail on S→N. The reasoning is recorded in
+  the partitioner docstring.
+- **Test_2's direction is S→N.** That is recorded here and in `docs/sensor_layout.md` §3.
+  **The relabel in code is cut:** the pipeline keeps `single_direction_unknown`, so the canonical
+  artifacts are not rebuilt. The label is a constant within every Test_2 stratum, so it changes
+  no partition. The split is unaffected either way, because the single-direction branch of
+  `_direction_balanced_test_records` seeds its shuffle with `"{seed}:{stratum_key}:split"`,
+  which leaves the direction string out.
+- **The R11 direction-keyed regression baseline is cut**, per the runbook v2 cut list.
+
+### Corridor — the two sources are one corridor, not two buildings
+
+- Both sources were recorded on **floor 4 of the Science and Engineering Innovation Center**.
+- The `experiment/sensors` tables in the two HDF5 sets are identical in every field except the
+  DAQ trigger configuration: the same 16 serial numbers, at the same x/y coordinates to the inch.
+- `testNotes.xlsx` independently lists the same serials at the same coordinates for the 2025
+  campaign, so this is not a stale template copied between campaigns. The one exception is
+  sensor 3 (below).
+- APDM record timestamps put `test_2` on **2024-04-06** and `20251124_Testing` on
+  **2025-11-24**, **19.6 months apart**.
+
+**Consequence.** The K=2 natural split is **cross-session / cross-campaign**, not cross-building.
+It is still a legitimate cross-silo split, because these differ between the two sources:
+
+- the subject cohorts (they overlap only at 003);
+- the protocol (unidirectional vs bidirectional);
+- the DAQ trigger configuration;
+- the true sampling rate;
+- 19 months of environmental and structural drift.
+
+Corrected in `CLAUDE.md`, `docs/review_response_plan.md` §1.2, and `README.md:10` and `:49`.
+Cross-building generalization is untested and is future work.
+
+### Subject 003 — identity confirmed, Test_2 demographics erroneous
+
+`testNotes.xlsx` states the overlap and the renumbering outright: *"Data was taken as subject
+001 -> 006. However subject 001 was subject 003 in prior data. None of the other subjects were
+repeated. We changed the subject numbers to start at 003 and end 008."* The pipeline's subject
+IDs are therefore correct, and 003 is the **same person** in both campaigns.
+
+The demographics disagree. The `Test_2` HDF5 records 003 as 65 in / 35 y / 134 lb, while
+`testNotes.xlsx` gives 67 in / 45 y / 137 lb. **Ruling:** identity is confirmed. The Test_2 HDF5
+demographic record for 003 is erroneous and must not be used, and `testNotes.xlsx` is
+authoritative.
+
+### Sensor 3 — corridor coordinate unresolved
+
+Sensor 3 (channel 3, serial 72538) has two recorded corridor coordinates. The HDF5
+`experiment/sensors` tables give `location_y = 905 in` (both sources agree), and
+`testNotes.xlsx` gives **805 in**. The other hallway positions are 991, 886, —, 739, 553, 372,
+234 and 103 in (positions 1–8).
+
+- 805 is consistent with monotone ordering down the corridor.
+- 905 would put sensor 3 between sensors 1 and 2.
+- **Unresolved.** One record is a transcription error, and neither source says which.
+- The K=3 contiguous position blocks {1,2,3} / {4,5,6} / {7,8} are contiguous corridor segments
+  under either value, so §1.3 is unaffected.
+- The earlier "confirmed against the drawing" claim has been dropped from
+  `docs/sensor_layout.md` §3 and `docs/review_response_plan.md` §1.3.

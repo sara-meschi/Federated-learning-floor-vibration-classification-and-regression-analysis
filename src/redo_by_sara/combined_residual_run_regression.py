@@ -21,6 +21,7 @@ from .combined_centralized_regression import (
 )
 from .guardrails import (
     assert_determinism_flags,
+    assert_split_integrity,
     check_regression_health,
     seeding_record,
     set_random_seeds,
@@ -69,6 +70,7 @@ def load_residual_run_config(path: str | Path) -> dict[str, Any]:
 
 
 def validate_regression_artifact(artifact: dict[str, object]) -> None:
+    assert_split_integrity(artifact, "regression artifact (load)")
     summary: dict[str, Any] = artifact["summary"]
     expected = {
         "num_usable_runs": 140,

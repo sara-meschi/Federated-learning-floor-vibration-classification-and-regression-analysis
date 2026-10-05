@@ -30,10 +30,12 @@ from .combined_residual_run_regression import (
     collate_whole_runs,
     compute_train_source_subject_means,
 )
+from .combined_iid_fl_partitioning import PARTITION_SCHEMES
 from .guardrails import (
     GuardedWriter,
     TestSetAccessGuard,
     assert_determinism_flags,
+    assert_split_integrity,
     check_regression_health,
     seeding_record,
     set_random_seeds,
@@ -62,12 +64,21 @@ def load_combined_iid_flower_config(path: str | Path) -> dict[str, Any]:
         raise ValueError("The combined IID experiment must use the Flower framework.")
     if str(federated["aggregation"]) != "FedAvg":
         raise ValueError("The combined IID experiment is fixed to FedAvg.")
-    if int(federated["num_clients"]) != 3:
-        raise ValueError("The combined IID experiment is fixed to exactly three clients.")
-    if int(federated["num_rounds"]) != 60 or int(federated["local_epochs"]) != 1:
-        raise ValueError("The production experiment is fixed to 60 rounds and one local epoch.")
+    num_clients = int(federated["num_clients"])
+    if num_clients not in (2, 3):
+        # Review plan §1.2: K > 3 leaves too few local optimizer steps per client.
+        raise ValueError(f"num_clients must be 2 or 3, got {num_clients}.")
+    partition_scheme = str(federated.get("partition_scheme", "iid"))
+    if partition_scheme not in PARTITION_SCHEMES:
+        raise ValueError(
+            f"Unknown partition_scheme {partition_scheme!r}; expected {PARTITION_SCHEMES}."
+        )
+    if partition_scheme == "natural" and num_clients != 2:
+        raise ValueError("The natural partition is one client per campaign: num_clients must be 2.")
+    if int(federated["num_rounds"]) < 1 or int(federated["local_epochs"]) < 1:
+        raise ValueError("num_rounds and local_epochs must both be at least 1.")
     if float(federated["fraction_fit"]) != 1.0:
-        raise ValueError("All three clients must participate in every fit round.")
+        raise ValueError("All clients must participate in every fit round.")
     if float(federated["fraction_evaluate"]) != 0.0:
         raise ValueError("Client evaluation is disabled; the server monitors the train union only.")
     if bool(federated["accept_failures"]):
@@ -105,7 +116,8 @@ def load_combined_iid_flower_config(path: str | Path) -> dict[str, Any]:
             project_root, raw["centralized_absolute_regression_summary"]
         ),
         "output_dir": _resolve(project_root, raw["output_dir"]),
-        "num_clients": int(federated["num_clients"]),
+        "num_clients": num_clients,
+        "partition_scheme": partition_scheme,
         "num_rounds": int(federated["num_rounds"]),
         "local_epochs": int(federated["local_epochs"]),
         "client_num_cpus": float(federated["client_num_cpus"]),
@@ -265,8 +277,13 @@ def _federated_residual_baseline(
         raise AssertionError(
             f"Federated residual scale {scale} does not match centralized {central_scale}."
         )
-    if total_runs != 112:
-        raise AssertionError(f"Expected 112 unique train runs, found {total_runs}.")
+    expected_runs = len(
+        {str(metadata[int(index)]["run_uid"]) for index in artifact["train_indices"]}
+    )
+    if total_runs != expected_runs:
+        raise AssertionError(
+            f"Clients hold {total_runs} unique train runs; the artifact has {expected_runs}."
+        )
 
     audit = {
         "method": "Federated sufficient statistics (n, sum, sum_sq) over unique local training runs",
@@ -649,7 +666,7 @@ def _build_regression_prediction_rows(
 def audit_combined_iid_flower_setup(
     config: dict[str, Any],
 ) -> tuple[dict[str, object], dict[str, object], list[Any], dict[str, Any]]:
-    from .combined_iid_fl_partitioning import build_combined_iid_partitions
+    from .combined_iid_fl_partitioning import build_combined_partitions
 
     classification = torch.load(
         config["classification_artifact"], map_location="cpu", weights_only=False
@@ -657,24 +674,28 @@ def audit_combined_iid_flower_setup(
     regression = torch.load(
         config["regression_artifact"], map_location="cpu", weights_only=False
     )
-    for task, artifact, expected in (
-        ("classification", classification, (1242, 307)),
-        ("regression", regression, (966, 238)),
+    for task, artifact in (
+        ("classification", classification),
+        ("regression", regression),
     ):
         summary = artifact["summary"]
         if summary["sample_shape"] != [9, 2000]:
             raise AssertionError(f"{task} artifact is not nine channels by 2000 samples.")
-        if (int(summary["num_train"]), int(summary["num_test"])) != expected:
-            raise AssertionError(f"Unexpected {task} 80/20 artifact counts.")
-        if summary["train_test_run_overlap"] != 0:
-            raise AssertionError(f"{task} artifact has train/test run overlap.")
+        # Measured from the indices and metadata, not read from the summary flag.
+        split_audit = assert_split_integrity(artifact, f"{task} artifact (federated load)")
+        if (int(summary["num_train"]), int(summary["num_test"])) != (
+            split_audit["num_train_windows"],
+            split_audit["num_test_windows"],
+        ):
+            raise AssertionError(f"{task} artifact summary disagrees with its split indices.")
         subject_ids = {str(item["subject_id"]) for item in artifact["metadata"]}
         if subject_ids != {"001", "002", "003", "004", "005", "007", "008"}:
             raise AssertionError(f"Unexpected {task} subject set: {sorted(subject_ids)}")
 
-    partitions, partition_summary = build_combined_iid_partitions(
+    partitions, partition_summary = build_combined_partitions(
         classification,
         regression,
+        scheme=config["partition_scheme"],
         num_clients=config["num_clients"],
         seed=config["seed"],
     )
@@ -689,6 +710,7 @@ def audit_combined_iid_flower_setup(
         "framework": "Flower 1.29 legacy simulation API",
         "aggregation": "FedAvg",
         "num_clients": config["num_clients"],
+        "partition_scheme": config["partition_scheme"],
         "production_rounds": config["num_rounds"],
         "local_epochs": config["local_epochs"],
         "full_client_participation": True,
@@ -703,7 +725,10 @@ def audit_combined_iid_flower_setup(
             "regression": regression_normalization,
         },
         "residual_baseline": residual_audit,
-        "test_policy": "No validation. Train-only global monitoring at rounds 0..60; held-out test evaluated once after the final round.",
+        "test_policy": (
+            "No validation. Train-only global monitoring at rounds "
+            f"0..{config['num_rounds']}; held-out test evaluated once after the final round."
+        ),
         "partition": partition_summary,
     }
     return classification, regression, partitions, setup
@@ -943,7 +968,7 @@ def _run_flower_core(
         def aggregate_fit(
             self, server_round: int, results: Any, failures: Any
         ) -> tuple[Any, dict[str, Any]]:
-            # Order the client results before aggregating. Ray returns the three
+            # Order the client results before aggregating. Ray returns the
             # ClientAppActors in whatever order they finish, FedAvg sums their weighted
             # parameters in that order, and float addition is not associative — so an
             # identical run diverges from its twin in the last bits of round 1 and
@@ -1164,8 +1189,14 @@ def _finalize_classification(
     test_metrics, matrix, predictions = _evaluate_classification(
         verified_model, test_loader, artifact["index_to_class"]
     )
-    expected_support = [69, 32, 43, 56, 25, 25, 27, 30]
-    if int(matrix.sum()) != 307 or matrix.sum(axis=1).tolist() != expected_support:
+    # The confusion matrix must account for every held-out window exactly once, per
+    # class: its row sums are checked against the support counted independently from
+    # the artifact's targets. The exact literals live in the tests.
+    expected_support = torch.bincount(
+        artifact["classification_targets"][torch.as_tensor(list(test_indices))],
+        minlength=len(artifact["index_to_class"]),
+    ).tolist()
+    if int(matrix.sum()) != len(test_indices) or matrix.sum(axis=1).tolist() != expected_support:
         raise AssertionError(
             f"Unexpected held-out classification support: {matrix.sum(axis=1).tolist()}"
         )
@@ -1177,7 +1208,10 @@ def _finalize_classification(
     central_summary_path = config["centralized_classification_dir"] / "training_summary.json"
     central_summary = json.loads(central_summary_path.read_text())
     summary: dict[str, Any] = {
-        "experiment": "combined_3client_iid_flower_classification",
+        "experiment": (
+            f"combined_{config['num_clients']}client_{config['partition_scheme']}"
+            "_flower_classification"
+        ),
         "seeding": core_audit["seeding"],
         "framework": "Flower",
         "strategy": "FedAvg",
@@ -1378,8 +1412,16 @@ def _finalize_regression(
     run_rows, window_rows = _build_regression_prediction_rows(
         artifact, test_dataset, test_result, source_subject_means
     )
-    if len(run_rows) != 28 or len({row["run_uid"] for row in run_rows}) != 28:
-        raise AssertionError("Final regression test does not contain 28 unique runs.")
+    expected_test_runs = len(
+        {str(artifact["metadata"][int(index)]["run_uid"]) for index in artifact["test_indices"]}
+    )
+    if len(run_rows) != expected_test_runs or len(
+        {row["run_uid"] for row in run_rows}
+    ) != expected_test_runs:
+        raise AssertionError(
+            f"Final regression test does not contain the artifact's {expected_test_runs} "
+            "unique test runs."
+        )
     _write_rows(run_predictions_path, run_rows)
     _write_rows(window_predictions_path, window_rows)
     run_metrics = _extended_regression_metrics(
@@ -1403,7 +1445,10 @@ def _finalize_regression(
         baseline=[row["source_subject_train_mean_mps"] for row in run_rows],
         final_standardized_mse=float(final_history["global_train_standardized_mse"]),
         enforced_gates=("degeneracy", "skill"),
-        run_label="combined_3client_iid_flower_residual_run_regression",
+        run_label=(
+            f"combined_{config['num_clients']}client_{config['partition_scheme']}"
+            "_flower_residual_run_regression"
+        ),
         # Gate degeneracy on the window-level residual, which is what the network emits.
         # The reported speed is baseline + residual, so a constant model still produces
         # one value per source/subject stratum (8) and looks less degenerate than it is.
@@ -1428,7 +1473,10 @@ def _finalize_regression(
     central_summary = json.loads(central_summary_path.read_text())
     central_metrics = central_summary["test_run_metrics"]
     summary: dict[str, Any] = {
-        "experiment": "combined_3client_iid_flower_residual_run_regression",
+        "experiment": (
+            f"combined_{config['num_clients']}client_{config['partition_scheme']}"
+            "_flower_residual_run_regression"
+        ),
         "seeding": core_audit["seeding"],
         "framework": "Flower",
         "strategy": "FedAvg weighted by unique complete training runs",
