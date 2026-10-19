@@ -86,3 +86,4 @@ Never describe this as cross-building in code, comments, docs, or the paper. Cro
 - One work package per session; commit and `/clear` between them.
 - Append a summary of what changed — and every number that moved — to `CHANGES.md`.
 - Report skill score (1 − MSE_model / MSE_baseline) as the primary regression metric, always alongside the baseline.
+- Paper runs: M5 CPU-only, conda fl, flwr 1.29.0, ray 2.51.1, client_num_cpus: 3. Never compare bitwise against old-machine results; all paper numbers come from this machine.

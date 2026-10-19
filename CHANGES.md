@@ -4,6 +4,73 @@ What changed, and every number that moved as a result. Newest first.
 
 ---
 
+## Machine migration — M5 environment and centralized baselines re-run (2026-10-18)
+
+On `main`, between S2 and S3. The project moved to a fresh clone on an M5 MacBook Air.
+All paper runs now happen there: CPU only, conda env `fl` (Python 3.11.15, torch 2.14.1,
+`flwr 1.29.0`, `ray 2.51.1`, pinned to match every earlier run). CPU float results are
+not bitwise identical across machines, so every number in the paper must come from this
+one. Old-machine results are compared within tolerance, never bitwise. Recorded as a
+working-agreement line in `CLAUDE.md`.
+
+### Changes
+
+- `client_num_cpus: 4 → 3` in `configs/combined_iid_flower_3clients_60r.yaml` and
+  `configs/combined_natural_flower_2clients_60r.yaml`. At K=3, 3 × 3 = 9 of the M5's 10
+  cores, leaving one for the driver. The value also sets each client's torch thread
+  count, so it is fixed at 3 for every paper run, K=2 and K=3 alike.
+- The canonical `.pt` window artifacts (gitignored) were rebuilt from `TestData/` with
+  `--preprocess-only`.
+- The three centralized baselines were re-run on the M5, overwriting their tracked
+  outputs in `artifacts/centralized_combined_*`.
+- `run_manifest.csv` (both artifacts): only the absolute `hdf5_path` / `speed_label_path`
+  columns changed (`/home/coder/workspace/...` → the M5 path). Every data column is
+  identical.
+
+### Rebuild verification
+
+All counts exact: 161 discovered → 15 excluded (subject 006) + 6 skipped → 140 usable →
+112 train / 28 test; classification 1549 (1242/307); regression 1204 (966/238);
+train/test run overlap 0. `pytest`: 68 passed, 1 skipped (`test_guardrails.py:67`, cudnn
+flags — no cudnn on macOS; it ran on the old machine, hence S2's 69).
+
+A 2-round federated smoke run (`--allow-degenerate`, into scratch) exited 0 for IID K=3
+and natural K=2. It matched S2's smoke run: final standardized MSE 1.0000512 vs 1.000051
+(K=3) and 1.0001157 vs 1.000114 (K=2). The K=2 difference in the 7th digit is
+cross-machine float drift. That run still shows the unfixed R1 behaviour; it is not a
+result.
+
+### Numbers that moved
+
+Tolerances were fixed before the new numbers were seen. Old values come from
+`git show HEAD:artifacts/...` at `f05828f`.
+
+| Metric | Old | New (M5) | Diff | Tolerance | Result |
+|---|---|---|---|---|---|
+| Run / window counts | 112/28, 966/238 | identical | 0 | exact | PASS |
+| Subject-mean baseline R², run level | 0.9246404 | 0.9246404 | 0 (bit-equal) | exact | PASS |
+| Subject-mean baseline RMSE (m/s) | 0.0405244 | 0.0405244 | 0 (bit-equal) | exact | PASS |
+| Classification errors / 307 | 1 | 1 | 0 | 0–3 | PASS |
+| Absolute regression R², run level | 0.812368 | 0.812753 | +0.000385 | ±0.02 | PASS |
+| Residual regression R², run level | 0.933207 | 0.933771 | +0.000564 | ±0.01 | PASS |
+| Residual skill vs subject mean | 0.113674 | 0.121158 | +0.007484 | ±0.05 | PASS |
+| Residual RMSE (m/s), info | 0.038152 | 0.037990 | −0.000161 | — | — |
+| Absolute RMSE (m/s), info | 0.063944 | 0.063878 | −0.000066 | — | — |
+| Classification accuracy / macro-F1, info | 0.996743 / 0.997423 | identical | 0 | — | — |
+
+The bit-identical subject-mean baseline (a lookup, no training) confirms that the data
+pipeline reproduces exactly. Every trained number moved within its tolerance. **The
+centralized reference numbers for the paper are now the M5 values:** residual skill
++0.121, R² 0.9338, RMSE 0.0380 m/s; absolute regression R² 0.8128, RMSE 0.0639 m/s;
+classification 1 error in 307. Any document still quoting +0.11 / 0.933 / 0.0382 refers
+to the old machine.
+
+The new absolute-regression `training_summary.json` also carries
+`distinct_predictions` / `num_predictions` keys that the old file predates (S1 detector).
+No existing key changed meaning.
+
+---
+
 ## Session 2 — K-parameterized partitioner, natural split, property assertions (2026-10-04/05)
 
 Branch `s2-partitioner`. Covers `docs/review_response_plan.md` §1.1, §1.2, §3 item 3 and B7,

@@ -21,7 +21,7 @@ federated:
   fraction_evaluate: 0.0
   min_available_clients: 2
   accept_failures: false
-  client_num_cpus: 4
+  client_num_cpus: 3
   client_num_gpus: 0.0
 
 training:
