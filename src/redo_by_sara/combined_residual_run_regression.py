@@ -44,10 +44,20 @@ def load_residual_run_config(path: str | Path) -> dict[str, Any]:
 
     if int(payload["seed"]) != base_config["seed"]:
         raise ValueError("Residual and baseline experiments must use the same seed.")
-    if int(training["epochs"]) != base_config["epochs"]:
-        raise ValueError("Residual and baseline experiments must use the same epoch count.")
-    if int(training["epochs"]) != 60:
-        raise ValueError("This comparison is fixed to 60 optimization epochs.")
+    # The canonical comparison is 60 epochs, matching the absolute-speed baseline. A
+    # different epoch count is allowed only when the config states why (e.g. the S3
+    # matched-budget reference), and the reason is carried into the run summary.
+    epochs_override_reason = str(training.get("epochs_override_reason") or "").strip()
+    if int(training["epochs"]) != base_config["epochs"] and not epochs_override_reason:
+        raise ValueError(
+            "Residual and baseline experiments must use the same epoch count unless "
+            "training.epochs_override_reason says why."
+        )
+    if int(training["epochs"]) != 60 and not epochs_override_reason:
+        raise ValueError(
+            "The canonical comparison is fixed to 60 optimization epochs; set "
+            "training.epochs_override_reason for a declared non-canonical run."
+        )
 
     return {
         "config_path": config_path,
@@ -61,6 +71,7 @@ def load_residual_run_config(path: str | Path) -> dict[str, Any]:
         "seed": int(payload["seed"]),
         "run_batch_size": int(training["run_batch_size"]),
         "epochs": int(training["epochs"]),
+        "epochs_override_reason": epochs_override_reason or None,
         "learning_rate": float(training["learning_rate"]),
         "minimum_learning_rate": float(training["minimum_learning_rate"]),
         "weight_decay": float(training["weight_decay"]),
@@ -910,6 +921,7 @@ def train_and_evaluate_residual_run_model(
         "seeding": seeding,
         "degenerate_model_check": health,
         "epochs": config["epochs"],
+        "epochs_override_reason": config["epochs_override_reason"],
         "run_batch_size": config["run_batch_size"],
         "initial_learning_rate": config["learning_rate"],
         "minimum_learning_rate": config["minimum_learning_rate"],

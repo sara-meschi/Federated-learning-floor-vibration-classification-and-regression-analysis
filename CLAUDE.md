@@ -4,7 +4,7 @@ Read this at the start of every session. These facts are authoritative. Any code
 
 ## Project
 
-Federated learning for gait analysis from structural floor vibration, targeting an IEEE conference paper (deadline: 31 Oct 2026, manuscript complete). Two tasks on the same windows: **subject identification** (classification) and **walking speed estimation** (regression). The claim is that federated learning across data silos is feasible and useful under IID and non-IID conditions without centralizing raw vibration data. **The two sources are the same instrumented corridor 19.6 months apart, not two buildings** — see "Silo framing" below.
+Federated learning for gait analysis from structural floor vibration, targeting an IEEE conference paper (deadline: 7 Nov 2026, manuscript complete). Two tasks on the same windows: **subject identification** (classification) and **walking speed estimation** (regression). The claim is that federated learning across data silos is feasible and useful under IID and non-IID conditions without centralizing raw vibration data. **The two sources are the same instrumented corridor 19.6 months apart, not two buildings** — see "Silo framing" below.
 
 Full work plan: `docs/review_response_plan.md`. Sensor detail: `docs/sensor_layout.md`.
 

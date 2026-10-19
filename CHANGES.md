@@ -4,6 +4,172 @@ What changed, and every number that moved as a result. Newest first.
 
 ---
 
+## Session 3 — R1 sweep results, escalation, and regression-skill analysis (2026-10-19)
+
+Branch `s3-r1-fix`. The sweep ran overnight on 2026-10-18/19 from commit `0819075`, under
+the rule committed in `407f03f`. It **ended in escalation**, and the PI resolved it
+(below). Per-run outputs are in `artifacts/s3_r1_sweep/` (gitignored except
+`sweep_table.md` and `sweep_summary.json`).
+
+### Stage 1 and 2: IID K=3, regression, 60 rounds, seed 4601
+
+| Config | Steps | Final train std. MSE | Distinct test residuals | Test skill | Test RMSE (m/s) | Test R² | Detector | Eligible / rank | Wall time |
+|---|---|---|---|---|---|---|---|---|---|
+| FedAvg E=1 fresh | 1,800 | 1.0001 | **1** | +0.004 | — | — | failed (degeneracy, MSE) | — | 12.8 min |
+| FedAvg E=1 persistent | 1,800 | 1.0000 | 238 (std 5e-7) | +0.000 | — | — | failed (MSE) | — | 14.3 min |
+| FedAvg E=5 fresh | 9,000 | 1.0000 | **1** | +0.001 | — | — | failed (degeneracy, MSE) | — | 27.6 min |
+| **FedAvg E=5 persistent** | 9,000 | 0.0549 | 238 | **+0.101** | 0.0384 | 0.932 | **passed** | **yes, rank 1** | 28.1 min |
+| FedAvg E=10 fresh | 18,000 | 0.0176 | 238 | −0.011 | — | — | failed (skill) | — | 42.0 min |
+| FedAvg E=10 persistent | 18,000 | 0.0220 | 238 | +0.302 | 0.0339 | 0.947 | passed | no (E cap, §2) | 43.1 min |
+| FedAdam E=5 persistent | 9,000 | 0.3808 | 238 | passed | — | — | passed | yes, rank 2 | 28.2 min |
+
+- **E=1 fresh reproduces R1 on the M5:** 1 distinct residual across 238 test windows,
+  standardized MSE 1.00007 (the original evidence: 1.00004).
+- **Persistent client optimizer state is the fix.** At E=5, `fresh` never leaves the
+  trivial baseline, while `persistent` reaches train MSE 0.055. The start/end
+  instrumentation shows the mechanism: under `fresh`, each client's loss at the end of
+  local training equals its loss at the start, to 4 decimals, in every round.
+- **E=10 fresh is a different failure:** 100 cold steps per round leave the plateau,
+  but the model then overfits (lowest train MSE in the table, negative test skill). The
+  detector's skill gate caught it.
+- Verified by hand: E=5 persistent `test_window_predictions.csv` has 238 rows,
+  238 distinct predicted residuals, std 0.040 m/s.
+- The rule doc's E=10 cost estimate (~2 h per regression run) was too high: measured
+  42–43 min.
+
+### Natural K=2 confirmation (rule §4): both tasks
+
+| Config | Classification final train acc. (reference E=1 fresh: 0.971) | Regression final train std. MSE | Distinct residuals | Regression test skill | Outcome |
+|---|---|---|---|---|---|
+| FedAvg E=5 persistent | 0.998 ✓ | 0.119 | 238 | **−0.207** | failed (skill) → fallback |
+| FedAdam E=5 persistent | 1.000 ✓ | 0.606 | 238 | **−0.002** | failed (skill) → escalate |
+
+`STOP AND ESCALATE: No eligible config passed the natural K=2 confirmation (rule §4).`
+
+### Escalation resolution (PI, 2026-10-19)
+
+The confirmation gate fired on **skill under the natural split, not on collapse.** Both
+ranked configs trained, gave 238 distinct residuals, and passed classification. The PI
+chose to **proceed to S5 with the pre-registered IID winner, FedAvg E=5 persistent**,
+for both tasks and for local-only. The natural-split regression result is to be
+reported as measured. This decision was made after seeing the confirmation results.
+It is recorded as an appended section in `docs/s3_winner_rule.md`, and the original rule
+text is unchanged.
+
+### Matched-budget centralized reference (new, declared)
+
+`configs/centralized_combined_residual_runbalanced_9ch_no006_300e.yaml`: identical to
+the 60-epoch baseline except 300 epochs (cosine `T_max` follows), i.e. **8,400
+optimizer steps**, against 9,000 for the FL winner. It does not replace the 60-epoch
+baseline. To allow it, `load_residual_run_config` now accepts a non-60-epoch run only
+when `training.epochs_override_reason` is set, and records the reason in the summary.
+
+| Centralized residual | Steps | Final train std. MSE | Test skill | Test RMSE (m/s) | Test R² |
+|---|---|---|---|---|---|
+| 60 epochs (canonical) | 1,680 | 0.716 | +0.121 | 0.0380 | 0.934 |
+| 300 epochs (matched budget) | 8,400 | **4e-6** | +0.272 | 0.0346 | 0.945 |
+
+The 300-epoch run memorizes its training runs: train loss is 0.0317 at epoch 100 and
+reaches 0 by epoch 250. **At a matched budget, FL (+0.101) is below centralized
+(+0.272).** The 60-epoch centralized number understates what centralized training can
+reach with the same number of steps.
+
+### Run-level bootstrap and subject-007 sensitivity
+
+`scripts/analyze_s3_regression_skill.py`. Skill = 1 − SSE_model / SSE_baseline against
+the source/subject train mean, over the 28 held-out test runs. 95% percentile interval
+from 10,000 resamples of test runs with replacement, seed 4601, with the same index
+draws for every run. Per-source intervals resample within the source.
+
+| Run | Overall (n=28) | Test_2 (n=13) | 20251124 (n=15) | Overall without 007 (n=25) |
+|---|---|---|---|---|
+| Centralized 60e | +0.121 [−0.288, +0.235] | −0.042 [−0.687, +0.245] | +0.136 [−0.348, +0.295] | −0.118 [−0.625, +0.210] |
+| Centralized 300e (matched budget) | +0.272 [−2.299, +0.682] | −1.879 [−3.430, −0.431] | +0.472 [−2.400, +0.773] | −1.175 [−4.287, +0.184] |
+| IID K=3 FedAvg E=5 persistent (winner) | +0.101 [−2.263, +0.480] | −0.443 [−1.417, +0.276] | +0.152 [−3.103, +0.543] | −1.159 [−4.331, +0.102] |
+| IID K=3 FedAvg E=10 persistent | +0.302 [−2.082, +0.667] | −0.810 [−2.164, +0.307] | +0.405 [−2.714, +0.723] | −0.934 [−4.218, +0.287] |
+| Natural K=2 FedAvg E=5 persistent | −0.207 [−4.128, +0.334] | −1.293 [−3.123, −0.183] | −0.106 [−5.441, +0.426] | −1.820 [−8.050, +0.179] |
+| Natural K=2 FedAdam E=5 persistent | −0.002 [−1.876, +0.319] | −0.150 [−1.068, +0.427] | +0.012 [−2.716, +0.389] | −0.775 [−3.755, +0.300] |
+
+**What this means for the paper. These are findings, not defects:**
+
+1. **No regression model's skill is distinguishable from zero.** Every overall 95%
+   interval, centralized included, contains 0.
+2. **All of the positive skill comes from subject 007.** 007's three test runs carry
+   ~73% of the baseline's squared error (baseline RMSE 0.106 m/s for 007, against 0.040
+   overall). With 007 removed, **every** model, including both centralized runs, is worse
+   than the subject-mean lookup.
+3. **More training helps on 007 and hurts on Test_2.** Matched-budget centralized and
+   FL E=10 both gain overall and lose on Test_2 (−1.88 and −0.81). On this test set,
+   the CNN's advantage over the lookup is not a general within-subject speed signal.
+4. Natural K=2 is the only setting with an interval entirely below zero (Test_2
+   FedAvg: [−3.123, −0.183]).
+
+### Run-level speed by subject and source (post-processing, no training)
+
+From the canonical regression `run_manifest.csv` (run-level APDM speed, 112 train and
+28 test runs). The train mean is the lookup baseline; it matches
+`train_source_subject_means.csv` exactly. SD is the sample SD across runs. "Share" is
+the subject's share of the baseline's total squared error on the 28 test runs (overall
+baseline RMSE 0.0405 m/s).
+
+| Source | Subject | Train runs | Test runs | Train mean (m/s) | Test mean (m/s) | Train SD (m/s) | Test SD (m/s) | Baseline RMSE on test (m/s) | Share of baseline SSE |
+|---|---|---|---|---|---|---|---|---|---|
+| Test_2 | 001 | 17 | 4 | 1.1376 | 1.1450 | 0.0128 | 0.0227 | 0.0210 | 3.8% |
+| Test_2 | 002 | 18 | 5 | 1.2417 | 1.2440 | 0.0138 | 0.0147 | 0.0134 | 2.0% |
+| Test_2 | 003 | 17 | 4 | 1.3650 | 1.3800 | 0.0384 | 0.0108 | 0.0177 | 2.7% |
+| 20251124 | 003 | 12 | 3 | 1.4700 | 1.4533 | 0.0427 | 0.0189 | 0.0227 | 3.4% |
+| 20251124 | 004 | 12 | 3 | 1.4879 | 1.4783 | 0.0268 | 0.0208 | 0.0195 | 2.5% |
+| 20251124 | 005 | 13 | 3 | 1.6473 | 1.6467 | 0.0255 | 0.0104 | 0.0085 | 0.5% |
+| 20251124 | **007** | 11 | 3 | 1.3259 | **1.3950** | 0.0592 | **0.0984** | **0.1059** | **73.2%** |
+| 20251124 | 008 | 12 | 3 | 1.4121 | 1.4400 | 0.0327 | 0.0397 | 0.0428 | 11.9% |
+
+**Subject 007 is the only subject whose test runs lie off its training distribution.**
+Its three test runs (1.305, 1.38, 1.50 m/s) average 0.069 m/s above its train mean, and
+one is faster than every 007 training run (train max 1.455). The lookup's error there
+is 5–12× any other subject's, so "skill over the lookup" on this test set is largely
+whether a model tracks 007's speed shift.
+
+### Numbers that moved
+
+- New reference: **centralized residual, 300 epochs: skill +0.272, RMSE 0.0346 m/s,
+  R² 0.945.**
+- First non-degenerate federated regression: **IID K=3 FedAvg E=5 persistent: skill
+  +0.101, RMSE 0.0384 m/s, R² 0.932.**
+- The 60-epoch centralized reference is unchanged from the M5 migration entry (+0.121).
+
+### Reproducibility check: 60-epoch centralized residual
+
+`configs/centralized_combined_residual_runbalanced_9ch_no006_60e.yaml` re-run with
+`--output-root` into scratch on the M5 (534 s), using the S3 code with the relaxed
+epoch check. Against the committed artifacts (`e62ab4b`), `test_run_predictions.csv`,
+`training_history.csv`, `test_window_predictions.csv` and
+`train_source_subject_means.csv` are **byte-identical**. The canonical baseline
+reproduces exactly, and the `epochs_override_reason` change leaves it untouched. The
+committed artifacts were not written.
+
+### S5 scope (decided 2026-10-19)
+
+**Every condition runs both tasks**, with the S3 winner setting (**FedAvg, E=5,
+persistent client optimizer state**) for every federated and local-only run:
+
+| Family | Conditions |
+|---|---|
+| Centralized | reference |
+| K=2 | IID · natural cross-session · local-only |
+| K=3 | channel ρ = 1.0 (= IID) · ρ = 0.33 · ρ = 0 · Dirichlet α = 0.1 · local-only |
+
+**Every regression output reports**, as in `scripts/analyze_s3_regression_skill.py`:
+overall skill and per-source skill (Test_2, 20251124), each with a run-level bootstrap
+95% CI (10,000 resamples of test runs, fixed seed), plus overall skill without subject
+007's test runs. S4 builds this into the consolidated regression metrics function so
+it is emitted automatically.
+
+**Fallback, decided before S5 runs:** if S5 is not complete by the morning of 31 Oct
+2026, drop **regression** from the Dirichlet α=0.1 run first, then from ρ=0.33.
+Classification for those runs still goes ahead.
+
+---
+
 ## Session 3 — R1 fix: implementation (2026-10-18; sweep results to follow)
 
 Branch `s3-r1-fix`. Covers `docs/review_response_plan.md` §2 R1. The winner rule,

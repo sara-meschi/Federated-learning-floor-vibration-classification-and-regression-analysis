@@ -5,3 +5,7 @@ __pycache__/
 *.pyc
 wandb/
 artifacts/_r1_evidence_readonly_backup/
+# S3 R1 sweep: per-run outputs stay local; the table and summary are the record.
+artifacts/s3_r1_sweep/*
+!artifacts/s3_r1_sweep/sweep_table.md
+!artifacts/s3_r1_sweep/sweep_summary.json

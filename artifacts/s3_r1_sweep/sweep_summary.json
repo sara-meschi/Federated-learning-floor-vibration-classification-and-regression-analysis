@@ -1,0 +1,518 @@
+{
+  "results": {
+    "fedavg_e01_fresh": {
+      "name": "fedavg_e01_fresh",
+      "stage": "stage_1",
+      "aggregation": "FedAvg",
+      "local_epochs": 1,
+      "client_optimizer_state": "fresh",
+      "status": "failed_detector",
+      "final_global_train_standardized_mse": 1.0000729764412557,
+      "total_gradient_steps": 1800,
+      "detector_passed": false,
+      "detector": {
+        "run_label": "combined_3client_iid_flower_residual_run_regression",
+        "num_predictions": 28,
+        "degeneracy_evaluated_on": "window predicted residual",
+        "num_model_outputs": 238,
+        "distinct_predictions": 1,
+        "prediction_std": 0.0,
+        "final_standardized_mse": 1.0000729764412557,
+        "skill_score_vs_subject_mean": 0.003615112791676367,
+        "thresholds": {
+          "minimum_distinct_predictions": 10,
+          "maximum_standardized_mse": 0.95,
+          "minimum_skill_score": 0.0
+        },
+        "enforced_gates": [
+          "degeneracy",
+          "skill"
+        ],
+        "gates": {
+          "degeneracy": {
+            "enforced": true,
+            "passed": false,
+            "failures": [
+              "only 1 distinct window predicted residual(s) across 238 rows (need > 10); this is a constant predictor, not a model",
+              "window predicted residual std is 0.0 (need > 0)"
+            ]
+          },
+          "skill": {
+            "enforced": true,
+            "passed": false,
+            "failures": [
+              "final standardized MSE 1.000073 (need < 0.95); 1.0 means 'predict zero residual'"
+            ]
+          }
+        },
+        "passed": false,
+        "allow_degenerate_override_used": false
+      },
+      "test_metrics": {},
+      "wall_seconds": 770.5912408330478,
+      "output_dir": "/Users/sara/coding_projects/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/s3_r1_sweep/fedavg_e01_fresh/regression"
+    },
+    "fedavg_e01_persistent": {
+      "name": "fedavg_e01_persistent",
+      "stage": "stage_1",
+      "aggregation": "FedAvg",
+      "local_epochs": 1,
+      "client_optimizer_state": "persistent",
+      "status": "failed_detector",
+      "final_global_train_standardized_mse": 0.9999954615320478,
+      "total_gradient_steps": 1800,
+      "detector_passed": false,
+      "detector": {
+        "run_label": "combined_3client_iid_flower_residual_run_regression",
+        "num_predictions": 28,
+        "degeneracy_evaluated_on": "window predicted residual",
+        "num_model_outputs": 238,
+        "distinct_predictions": 238,
+        "prediction_std": 4.781253211742321e-07,
+        "final_standardized_mse": 0.9999954615320478,
+        "skill_score_vs_subject_mean": 0.0001621314278481556,
+        "thresholds": {
+          "minimum_distinct_predictions": 10,
+          "maximum_standardized_mse": 0.95,
+          "minimum_skill_score": 0.0
+        },
+        "enforced_gates": [
+          "degeneracy",
+          "skill"
+        ],
+        "gates": {
+          "degeneracy": {
+            "enforced": true,
+            "passed": true,
+            "failures": []
+          },
+          "skill": {
+            "enforced": true,
+            "passed": false,
+            "failures": [
+              "final standardized MSE 0.999995 (need < 0.95); 1.0 means 'predict zero residual'"
+            ]
+          }
+        },
+        "passed": false,
+        "allow_degenerate_override_used": false
+      },
+      "test_metrics": {},
+      "wall_seconds": 860.0704471250065,
+      "output_dir": "/Users/sara/coding_projects/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/s3_r1_sweep/fedavg_e01_persistent/regression"
+    },
+    "fedavg_e05_fresh": {
+      "name": "fedavg_e05_fresh",
+      "stage": "stage_1",
+      "aggregation": "FedAvg",
+      "local_epochs": 5,
+      "client_optimizer_state": "fresh",
+      "status": "failed_detector",
+      "final_global_train_standardized_mse": 1.000006494378405,
+      "total_gradient_steps": 9000,
+      "detector_passed": false,
+      "detector": {
+        "run_label": "combined_3client_iid_flower_residual_run_regression",
+        "num_predictions": 28,
+        "degeneracy_evaluated_on": "window predicted residual",
+        "num_model_outputs": 238,
+        "distinct_predictions": 1,
+        "prediction_std": 0.0,
+        "final_standardized_mse": 1.000006494378405,
+        "skill_score_vs_subject_mean": 0.00109133319915522,
+        "thresholds": {
+          "minimum_distinct_predictions": 10,
+          "maximum_standardized_mse": 0.95,
+          "minimum_skill_score": 0.0
+        },
+        "enforced_gates": [
+          "degeneracy",
+          "skill"
+        ],
+        "gates": {
+          "degeneracy": {
+            "enforced": true,
+            "passed": false,
+            "failures": [
+              "only 1 distinct window predicted residual(s) across 238 rows (need > 10); this is a constant predictor, not a model",
+              "window predicted residual std is 0.0 (need > 0)"
+            ]
+          },
+          "skill": {
+            "enforced": true,
+            "passed": false,
+            "failures": [
+              "final standardized MSE 1.000006 (need < 0.95); 1.0 means 'predict zero residual'"
+            ]
+          }
+        },
+        "passed": false,
+        "allow_degenerate_override_used": false
+      },
+      "test_metrics": {},
+      "wall_seconds": 1656.7190588749945,
+      "output_dir": "/Users/sara/coding_projects/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/s3_r1_sweep/fedavg_e05_fresh/regression"
+    },
+    "fedavg_e05_persistent": {
+      "name": "fedavg_e05_persistent",
+      "stage": "stage_1",
+      "aggregation": "FedAvg",
+      "local_epochs": 5,
+      "client_optimizer_state": "persistent",
+      "status": "passed",
+      "final_global_train_standardized_mse": 0.05490711148013361,
+      "total_gradient_steps": 9000,
+      "detector_passed": true,
+      "detector": {
+        "run_label": "combined_3client_iid_flower_residual_run_regression",
+        "num_predictions": 28,
+        "degeneracy_evaluated_on": "window predicted residual",
+        "num_model_outputs": 238,
+        "distinct_predictions": 238,
+        "prediction_std": 0.039526494769175705,
+        "final_standardized_mse": 0.05490711148013361,
+        "skill_score_vs_subject_mean": 0.10140743920735584,
+        "thresholds": {
+          "minimum_distinct_predictions": 10,
+          "maximum_standardized_mse": 0.95,
+          "minimum_skill_score": 0.0
+        },
+        "enforced_gates": [
+          "degeneracy",
+          "skill"
+        ],
+        "gates": {
+          "degeneracy": {
+            "enforced": true,
+            "passed": true,
+            "failures": []
+          },
+          "skill": {
+            "enforced": true,
+            "passed": true,
+            "failures": []
+          }
+        },
+        "passed": true,
+        "allow_degenerate_override_used": false,
+        "window_level": {
+          "num_predictions": 238,
+          "distinct_predicted_residual_mps": 238,
+          "distinct_predicted_speed_mps": 238
+        }
+      },
+      "test_metrics": {
+        "mse": 0.0014756894860837072,
+        "rmse_mps": 0.0384147040348316,
+        "mae_mps": 0.024617803948266164,
+        "bias_mps": -0.0121191782610757,
+        "r2": 0.9322824682555171,
+        "within_0_10_mps_pct": 92.85714285714286,
+        "median_absolute_error_mps": 0.015939950942993164
+      },
+      "wall_seconds": 1686.5686559169553,
+      "output_dir": "/Users/sara/coding_projects/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/s3_r1_sweep/fedavg_e05_persistent/regression"
+    },
+    "fedavg_e10_fresh": {
+      "name": "fedavg_e10_fresh",
+      "stage": "stage_1",
+      "aggregation": "FedAvg",
+      "local_epochs": 10,
+      "client_optimizer_state": "fresh",
+      "status": "failed_detector",
+      "final_global_train_standardized_mse": 0.017582695964457735,
+      "total_gradient_steps": 18000,
+      "detector_passed": false,
+      "detector": {
+        "run_label": "combined_3client_iid_flower_residual_run_regression",
+        "num_predictions": 28,
+        "degeneracy_evaluated_on": "window predicted residual",
+        "num_model_outputs": 238,
+        "distinct_predictions": 238,
+        "prediction_std": 0.03489328594739345,
+        "final_standardized_mse": 0.017582695964457735,
+        "skill_score_vs_subject_mean": -0.010463991973547637,
+        "thresholds": {
+          "minimum_distinct_predictions": 10,
+          "maximum_standardized_mse": 0.95,
+          "minimum_skill_score": 0.0
+        },
+        "enforced_gates": [
+          "degeneracy",
+          "skill"
+        ],
+        "gates": {
+          "degeneracy": {
+            "enforced": true,
+            "passed": true,
+            "failures": []
+          },
+          "skill": {
+            "enforced": true,
+            "passed": false,
+            "failures": [
+              "skill score -0.010464 vs the source/subject-mean baseline (need > 0.0); the model is not beating the lookup table"
+            ]
+          }
+        },
+        "passed": false,
+        "allow_degenerate_override_used": false
+      },
+      "test_metrics": {},
+      "wall_seconds": 2517.279009583872,
+      "output_dir": "/Users/sara/coding_projects/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/s3_r1_sweep/fedavg_e10_fresh/regression"
+    },
+    "fedavg_e10_persistent": {
+      "name": "fedavg_e10_persistent",
+      "stage": "stage_1",
+      "aggregation": "FedAvg",
+      "local_epochs": 10,
+      "client_optimizer_state": "persistent",
+      "status": "passed",
+      "final_global_train_standardized_mse": 0.021968840072596713,
+      "total_gradient_steps": 18000,
+      "detector_passed": true,
+      "detector": {
+        "run_label": "combined_3client_iid_flower_residual_run_regression",
+        "num_predictions": 28,
+        "degeneracy_evaluated_on": "window predicted residual",
+        "num_model_outputs": 238,
+        "distinct_predictions": 238,
+        "prediction_std": 0.05311412537871105,
+        "final_standardized_mse": 0.021968840072596713,
+        "skill_score_vs_subject_mean": 0.30205285161939577,
+        "thresholds": {
+          "minimum_distinct_predictions": 10,
+          "maximum_standardized_mse": 0.95,
+          "minimum_skill_score": 0.0
+        },
+        "enforced_gates": [
+          "degeneracy",
+          "skill"
+        ],
+        "gates": {
+          "degeneracy": {
+            "enforced": true,
+            "passed": true,
+            "failures": []
+          },
+          "skill": {
+            "enforced": true,
+            "passed": true,
+            "failures": []
+          }
+        },
+        "passed": true,
+        "allow_degenerate_override_used": false,
+        "window_level": {
+          "num_predictions": 238,
+          "distinct_predicted_residual_mps": 238,
+          "distinct_predicted_speed_mps": 238
+        }
+      },
+      "test_metrics": {
+        "mse": 0.0011461849492709422,
+        "rmse_mps": 0.033855353332537266,
+        "mae_mps": 0.02388826012611389,
+        "bias_mps": -0.012066096067428589,
+        "r2": 0.9474030164074092,
+        "within_0_10_mps_pct": 100.0,
+        "median_absolute_error_mps": 0.016304373741149902
+      },
+      "wall_seconds": 2583.2549315830693,
+      "output_dir": "/Users/sara/coding_projects/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/s3_r1_sweep/fedavg_e10_persistent/regression"
+    },
+    "fedadam_e05_persistent": {
+      "name": "fedadam_e05_persistent",
+      "stage": "stage_2",
+      "aggregation": "FedAdam",
+      "local_epochs": 5,
+      "client_optimizer_state": "persistent",
+      "status": "passed",
+      "final_global_train_standardized_mse": 0.3807794103132827,
+      "total_gradient_steps": 9000,
+      "detector_passed": true,
+      "detector": {
+        "run_label": "combined_3client_iid_flower_residual_run_regression",
+        "num_predictions": 28,
+        "degeneracy_evaluated_on": "window predicted residual",
+        "num_model_outputs": 238,
+        "distinct_predictions": 238,
+        "prediction_std": 0.03493780062957284,
+        "final_standardized_mse": 0.3807794103132827,
+        "skill_score_vs_subject_mean": 0.08929404604394553,
+        "thresholds": {
+          "minimum_distinct_predictions": 10,
+          "maximum_standardized_mse": 0.95,
+          "minimum_skill_score": 0.0
+        },
+        "enforced_gates": [
+          "degeneracy",
+          "skill"
+        ],
+        "gates": {
+          "degeneracy": {
+            "enforced": true,
+            "passed": true,
+            "failures": []
+          },
+          "skill": {
+            "enforced": true,
+            "passed": true,
+            "failures": []
+          }
+        },
+        "passed": true,
+        "allow_degenerate_override_used": false,
+        "window_level": {
+          "num_predictions": 238,
+          "distinct_predicted_residual_mps": 238,
+          "distinct_predicted_speed_mps": 238
+        }
+      },
+      "test_metrics": {
+        "mse": 0.001495582380496582,
+        "rmse_mps": 0.038672760187198715,
+        "mae_mps": 0.02541330030986241,
+        "bias_mps": -0.003373444080352783,
+        "r2": 0.9313696083879115,
+        "within_0_10_mps_pct": 96.42857142857143,
+        "median_absolute_error_mps": 0.018127083778381348
+      },
+      "wall_seconds": 1690.437359499978,
+      "output_dir": "/Users/sara/coding_projects/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/s3_r1_sweep/fedadam_e05_persistent/regression"
+    }
+  },
+  "preflight_history": [
+    {
+      "head_commit": "08190750702fca2b552fc0661ac5cec69bbf3388",
+      "rule_doc": "docs/s3_winner_rule.md",
+      "rule_doc_commit": "407f03fbae403a34dd6123cc3d3e9d3ff5f927a4",
+      "determinism_precondition": "1 passed, 3 warnings in 88.89s (0:01:28)",
+      "python": "3.11.15",
+      "machine": "arm64",
+      "flwr": "1.29.0",
+      "ray": "2.51.1",
+      "torch": "2.14.1"
+    }
+  ],
+  "stage_1_winner": "fedavg_e05_persistent",
+  "iid_k3_ranking": [
+    "fedavg_e05_persistent",
+    "fedadam_e05_persistent"
+  ],
+  "confirmation": {
+    "reference_final_global_train_accuracy": 0.9710144927536232,
+    "attempts": [
+      {
+        "config": "fedavg_e05_persistent",
+        "classification_final_global_train_accuracy": 0.998389694041868,
+        "classification_passes": true,
+        "regression": {
+          "name": "fedavg_e05_persistent",
+          "stage": "confirm_natural_k2",
+          "aggregation": "FedAvg",
+          "local_epochs": 5,
+          "client_optimizer_state": "persistent",
+          "status": "failed_detector",
+          "final_global_train_standardized_mse": 0.11919681362009474,
+          "total_gradient_steps": 8400,
+          "detector_passed": false,
+          "detector": {
+            "run_label": "combined_2client_natural_flower_residual_run_regression",
+            "num_predictions": 28,
+            "degeneracy_evaluated_on": "window predicted residual",
+            "num_model_outputs": 238,
+            "distinct_predictions": 238,
+            "prediction_std": 0.04593092353946046,
+            "final_standardized_mse": 0.11919681362009474,
+            "skill_score_vs_subject_mean": -0.20705809907253392,
+            "thresholds": {
+              "minimum_distinct_predictions": 10,
+              "maximum_standardized_mse": 0.95,
+              "minimum_skill_score": 0.0
+            },
+            "enforced_gates": [
+              "degeneracy",
+              "skill"
+            ],
+            "gates": {
+              "degeneracy": {
+                "enforced": true,
+                "passed": true,
+                "failures": []
+              },
+              "skill": {
+                "enforced": true,
+                "passed": false,
+                "failures": [
+                  "skill score -0.207058 vs the source/subject-mean baseline (need > 0.0); the model is not beating the lookup table"
+                ]
+              }
+            },
+            "passed": false,
+            "allow_degenerate_override_used": false
+          },
+          "test_metrics": {},
+          "wall_seconds": null,
+          "output_dir": "/Users/sara/coding_projects/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/s3_r1_sweep/confirm_natural_k2/fedavg_e05_persistent/regression"
+        }
+      },
+      {
+        "config": "fedadam_e05_persistent",
+        "classification_final_global_train_accuracy": 1.0,
+        "classification_passes": true,
+        "regression": {
+          "name": "fedadam_e05_persistent",
+          "stage": "confirm_natural_k2",
+          "aggregation": "FedAdam",
+          "local_epochs": 5,
+          "client_optimizer_state": "persistent",
+          "status": "failed_detector",
+          "final_global_train_standardized_mse": 0.6062742404506675,
+          "total_gradient_steps": 8400,
+          "detector_passed": false,
+          "detector": {
+            "run_label": "combined_2client_natural_flower_residual_run_regression",
+            "num_predictions": 28,
+            "degeneracy_evaluated_on": "window predicted residual",
+            "num_model_outputs": 238,
+            "distinct_predictions": 238,
+            "prediction_std": 0.04040195524630379,
+            "final_standardized_mse": 0.6062742404506675,
+            "skill_score_vs_subject_mean": -0.0021394841757216287,
+            "thresholds": {
+              "minimum_distinct_predictions": 10,
+              "maximum_standardized_mse": 0.95,
+              "minimum_skill_score": 0.0
+            },
+            "enforced_gates": [
+              "degeneracy",
+              "skill"
+            ],
+            "gates": {
+              "degeneracy": {
+                "enforced": true,
+                "passed": true,
+                "failures": []
+              },
+              "skill": {
+                "enforced": true,
+                "passed": false,
+                "failures": [
+                  "skill score -0.002139 vs the source/subject-mean baseline (need > 0.0); the model is not beating the lookup table"
+                ]
+              }
+            },
+            "passed": false,
+            "allow_degenerate_override_used": false
+          },
+          "test_metrics": {},
+          "wall_seconds": null,
+          "output_dir": "/Users/sara/coding_projects/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/s3_r1_sweep/confirm_natural_k2/fedadam_e05_persistent/regression"
+        }
+      }
+    ]
+  },
+  "escalation": "No eligible config passed the natural K=2 confirmation (rule \u00a74)."
+}

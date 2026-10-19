@@ -1,0 +1,19 @@
+base_experiment_config: configs/centralized_combined_regression_9ch_no006_walking_80_20_60e.yaml
+artifact_path: artifacts/centralized_combined_regression_9ch_no006_walking_80_20_60e/raw_walking_windows_regression.pt
+baseline_summary_path: artifacts/centralized_combined_regression_9ch_no006_walking_80_20_60e/training_summary.json
+output_dir: artifacts/centralized_combined_residual_runbalanced_9ch_no006_300e
+
+seed: 4601
+
+training:
+  run_batch_size: 4
+  epochs: 300
+  # S3 matched-budget reference: 300 x ceil(112/4) = 8400 optimizer steps, close to the
+  # 9000 the FedAvg E=5 persistent winner takes at IID K=3. Identical to the 60-epoch
+  # baseline in every other setting (cosine T_max follows epochs). It does not replace
+  # the 60-epoch baseline; both are reported.
+  epochs_override_reason: "S3 matched-budget centralized reference (~9000 FL steps at E=5)"
+  learning_rate: 0.001
+  minimum_learning_rate: 0.00001
+  weight_decay: 0.0001
+  num_workers: 0

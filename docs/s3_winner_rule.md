@@ -116,3 +116,29 @@ files written to and read from disk between rounds. Before the sweep runs, a tes
 show that the **same config run twice** (E=2, `client_optimizer_state: persistent`, a
 few rounds, small enough to be quick) gives **bitwise-identical final model
 parameters**. If it does not, the sweep does not start.
+
+---
+
+## Escalation resolution (2026-10-19)
+
+*Appended after the sweep ran. Sections 1–6 above are the rule as committed in
+`407f03f`, before any result existed, and are unchanged.*
+
+The sweep ended with `STOP AND ESCALATE: No eligible config passed the natural K=2
+confirmation (rule §4)`.
+
+- Stage 1 selected **FedAvg, E=5, persistent** (rank 1). FedAdam at that setting
+  passed the detector and ranked 2. E=10 persistent passed but was not eligible under
+  the §2 cap.
+- On natural K=2, **both ranked configs failed the confirmation on the skill gate, not
+  on collapse.** Both trained (final global-train standardized MSE 0.119 and 0.606) and
+  produced 238 distinct test residuals. Their test skill against the subject-mean
+  baseline was **−0.207** (FedAvg) and **−0.002** (FedAdam). Classification passed for
+  both (final global-train accuracy 0.998 and 1.000, against the E=1/`fresh` reference
+  of 0.971).
+
+**Resolution, by the PI:** proceed to S5 with the pre-registered IID winner (**FedAvg,
+E=5, persistent client optimizer state**) for both tasks and for the local-only
+baselines. The natural-split regression result is reported **as measured**, as a
+heterogeneity outcome, not as a failed run. This is a decision made after seeing the
+confirmation results, and it is disclosed as such here and in `CHANGES.md`.
