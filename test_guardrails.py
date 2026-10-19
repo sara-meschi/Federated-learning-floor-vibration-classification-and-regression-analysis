@@ -192,6 +192,12 @@ def test_r1_collapse_fails_both_gates() -> None:
     # detector looked at the residual rather than the baseline-inflated speed.
     assert "1 distinct window predicted residual" in message
     assert "skill score" in message
+    # The exception carries the full report, so a sweep can record why a config failed
+    # without the run writing a summary that could be mistaken for a result.
+    assert excinfo.value.report is not None
+    assert excinfo.value.report["passed"] is False
+    assert excinfo.value.report["distinct_predictions"] == 1
+    assert excinfo.value.report["final_standardized_mse"] == 1.0000406
 
     report = check_regression_health(
         **case,

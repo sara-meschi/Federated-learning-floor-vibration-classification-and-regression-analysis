@@ -5,6 +5,7 @@ import json
 import math
 import os
 import random
+import shutil
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, Iterable, Sequence
@@ -32,6 +33,7 @@ from .combined_residual_run_regression import (
 )
 from .combined_iid_fl_partitioning import PARTITION_SCHEMES
 from .guardrails import (
+    DegenerateModelError,
     GuardedWriter,
     TestSetAccessGuard,
     assert_determinism_flags,
@@ -46,24 +48,78 @@ from .parameters import get_parameters, set_parameters
 
 _CLIENT_ARTIFACT_CACHE: dict[str, dict[str, object]] = {}
 
+AGGREGATIONS = ("FedAvg", "FedAdam")
+
+#: ``fresh`` builds a new Adam on every client every round (the pre-S3 behaviour, and
+#: the cause of R1: ~10 steps from a cold optimizer per round). ``persistent`` carries
+#: each client's Adam moments across rounds, which is legitimate in cross-silo FL where
+#: clients are persistent institutions. Model parameters are still replaced by the
+#: global model every round; only the optimizer state persists.
+CLIENT_OPTIMIZER_STATES = ("fresh", "persistent")
+
+#: ``cosine_over_rounds``: one LR per round, cosine-annealed over rounds (pre-S3).
+#: ``constant``: the initial LR throughout.
+#: ``cosine_restart_per_round``: cosine from the initial to the minimum LR over the
+#: local epochs of each round, restarting every round; at local_epochs=1 it is constant.
+LR_SCHEDULES = ("cosine_over_rounds", "constant", "cosine_restart_per_round")
+
+#: FedAdam server hyperparameters, pre-registered in docs/s3_winner_rule.md §1 and not
+#: tuned. Flower's default eta=0.1 is too large a server step for this model.
+FEDADAM_HYPERPARAMETERS = {"eta": 1e-2, "beta_1": 0.9, "beta_2": 0.99, "tau": 1e-3}
+
+
+def _apply_overrides(raw: dict[str, Any], overrides: dict[str, Any]) -> None:
+    """Set dotted keys (``federated.local_epochs``) on the raw YAML before validation."""
+    for dotted, value in overrides.items():
+        node = raw
+        *parents, leaf = dotted.split(".")
+        for key in parents:
+            if not isinstance(node.get(key), dict):
+                raise KeyError(f"Override {dotted!r}: {key!r} is not a config section.")
+            node = node[key]
+        node[leaf] = value
+
 
 def _resolve(project_root: Path, value: str | Path) -> Path:
     path = Path(value)
     return path if path.is_absolute() else (project_root / path).resolve()
 
 
-def load_combined_iid_flower_config(path: str | Path) -> dict[str, Any]:
+def load_combined_iid_flower_config(
+    path: str | Path, overrides: dict[str, Any] | None = None
+) -> dict[str, Any]:
     config_path = Path(path).resolve()
     project_root = config_path.parents[1]
     raw: dict[str, Any] = yaml.safe_load(config_path.read_text())
+    if overrides:
+        _apply_overrides(raw, overrides)
     federated = raw["federated"]
     training = raw["training"]
     experiment = raw["experiment"]
 
     if str(federated["framework"]).lower() != "flower":
         raise ValueError("The combined IID experiment must use the Flower framework.")
-    if str(federated["aggregation"]) != "FedAvg":
-        raise ValueError("The combined IID experiment is fixed to FedAvg.")
+    aggregation = str(federated["aggregation"])
+    if aggregation not in AGGREGATIONS:
+        raise ValueError(f"aggregation must be one of {AGGREGATIONS}, got {aggregation!r}.")
+    client_optimizer_state = str(federated.get("client_optimizer_state", "fresh"))
+    if client_optimizer_state not in CLIENT_OPTIMIZER_STATES:
+        raise ValueError(
+            f"client_optimizer_state must be one of {CLIENT_OPTIMIZER_STATES}, "
+            f"got {client_optimizer_state!r}."
+        )
+    lr_schedule = str(training.get("lr_schedule", "cosine_over_rounds"))
+    if lr_schedule not in LR_SCHEDULES:
+        raise ValueError(f"lr_schedule must be one of {LR_SCHEDULES}, got {lr_schedule!r}.")
+    server_optimizer = dict(FEDADAM_HYPERPARAMETERS)
+    if aggregation == "FedAdam":
+        configured = dict(federated.get("server_optimizer") or {})
+        unknown = set(configured) - set(FEDADAM_HYPERPARAMETERS)
+        if unknown:
+            raise ValueError(f"Unknown FedAdam hyperparameter(s): {sorted(unknown)}")
+        server_optimizer.update({key: float(value) for key, value in configured.items()})
+    elif federated.get("server_optimizer"):
+        raise ValueError("server_optimizer is only meaningful with aggregation: FedAdam.")
     num_clients = int(federated["num_clients"])
     if num_clients not in (2, 3):
         # Review plan §1.2: K > 3 leaves too few local optimizer steps per client.
@@ -120,6 +176,10 @@ def load_combined_iid_flower_config(path: str | Path) -> dict[str, Any]:
         "partition_scheme": partition_scheme,
         "num_rounds": int(federated["num_rounds"]),
         "local_epochs": int(federated["local_epochs"]),
+        "aggregation": aggregation,
+        "server_optimizer": server_optimizer if aggregation == "FedAdam" else None,
+        "client_optimizer_state": client_optimizer_state,
+        "lr_schedule": lr_schedule,
         "client_num_cpus": float(federated["client_num_cpus"]),
         "client_num_gpus": float(federated["client_num_gpus"]),
         "classification_batch_size": int(training["classification_batch_size"]),
@@ -151,6 +211,141 @@ def cosine_round_learning_rate(
         minimum
         + 0.5 * (maximum - minimum) * (1.0 + math.cos(math.pi * offset / total_rounds))
     )
+
+
+def round_learning_rate(
+    schedule: str, server_round: int, maximum: float, minimum: float, total_rounds: int
+) -> float:
+    """The LR the server sends for a round: the base the client starts its round from."""
+    if schedule == "cosine_over_rounds":
+        return cosine_round_learning_rate(server_round, maximum, minimum, total_rounds)
+    if schedule in ("constant", "cosine_restart_per_round"):
+        if not 1 <= server_round <= total_rounds:
+            raise ValueError(f"Round {server_round} is outside 1..{total_rounds}.")
+        return float(maximum)
+    raise ValueError(f"Unknown lr_schedule {schedule!r}.")
+
+
+def local_epoch_learning_rate(
+    schedule: str, round_lr: float, minimum: float, local_epoch: int, local_epochs: int
+) -> float:
+    """The LR a client uses for one local epoch (0-based) within a round."""
+    if not 0 <= local_epoch < local_epochs:
+        raise ValueError(f"Local epoch {local_epoch} is outside 0..{local_epochs - 1}.")
+    if schedule in ("cosine_over_rounds", "constant"):
+        return float(round_lr)
+    if schedule == "cosine_restart_per_round":
+        return float(
+            minimum
+            + 0.5
+            * (round_lr - minimum)
+            * (1.0 + math.cos(math.pi * local_epoch / local_epochs))
+        )
+    raise ValueError(f"Unknown lr_schedule {schedule!r}.")
+
+
+def gradient_step_budget(
+    units_by_client: dict[str, int], batch_size: int, local_epochs: int, num_rounds: int
+) -> dict[str, Any]:
+    """Total optimizer steps a federated run takes: sum_k ceil(n_k / B) x E x R.
+
+    ``units`` are what one batch element is: windows for classification, complete runs
+    for regression. Steps per client per round are what R1 turned on: ~10 consecutive
+    steps from a cold optimizer cannot move a zero-initialized head.
+    """
+    steps_per_epoch = {
+        client_id: math.ceil(int(units) / int(batch_size))
+        for client_id, units in sorted(units_by_client.items())
+    }
+    per_round = {
+        client_id: steps * int(local_epochs) for client_id, steps in steps_per_epoch.items()
+    }
+    return {
+        "batch_size": int(batch_size),
+        "local_epochs": int(local_epochs),
+        "num_rounds": int(num_rounds),
+        "steps_per_local_epoch_by_client": steps_per_epoch,
+        "consecutive_steps_per_round_by_client": per_round,
+        "total_steps_per_round": sum(per_round.values()),
+        "total_gradient_steps": sum(per_round.values()) * int(num_rounds),
+    }
+
+
+def _centralized_step_budget(
+    task: str, num_train_units: int, config: dict[str, Any]
+) -> dict[str, Any]:
+    """Steps the matching centralized run took: one persistent Adam over every epoch."""
+    directory = (
+        config["centralized_classification_dir"]
+        if task == "classification"
+        else config["centralized_regression_dir"]
+    )
+    summary = json.loads((Path(directory) / "training_summary.json").read_text())
+    batch_size = int(summary["batch_size"] if task == "classification" else summary["run_batch_size"])
+    epochs = int(summary["epochs"])
+    steps_per_epoch = math.ceil(int(num_train_units) / batch_size)
+    return {
+        "summary_path": str(Path(directory) / "training_summary.json"),
+        "train_units": int(num_train_units),
+        "batch_size": batch_size,
+        "epochs": epochs,
+        "steps_per_epoch": steps_per_epoch,
+        "total_gradient_steps": steps_per_epoch * epochs,
+        "optimizer": "one Adam persisted over all epochs",
+    }
+
+
+def _client_optimizer_state_path(state_dir: str | Path, client_id: str) -> Path:
+    return Path(state_dir) / f"{client_id}.pt"
+
+
+def _prepare_client_optimizer(
+    optimizer: torch.optim.Optimizer,
+    experiment: dict[str, Any],
+    client_id: str,
+    server_round: int,
+) -> float:
+    """Load this client's persisted Adam state in persistent mode; return its step count.
+
+    Round 1 starts cold. From round 2 on the state file must exist: a missing file would
+    silently turn persistent mode into fresh mode, which is exactly the R1 regime.
+    """
+    if experiment["client_optimizer_state"] != "persistent":
+        return 0.0
+    path = _client_optimizer_state_path(experiment["optimizer_state_dir"], client_id)
+    if server_round == 1:
+        if path.exists():
+            raise AssertionError(f"{client_id} optimizer state exists before round 1: {path}")
+        return 0.0
+    if not path.exists():
+        raise AssertionError(
+            f"{client_id} persistent optimizer state is missing at round {server_round}: {path}"
+        )
+    optimizer.load_state_dict(torch.load(path, map_location="cpu", weights_only=True))
+    return _adam_step_count(optimizer)
+
+
+def _save_client_optimizer(
+    optimizer: torch.optim.Optimizer, experiment: dict[str, Any], client_id: str
+) -> None:
+    if experiment["client_optimizer_state"] != "persistent":
+        return
+    path = _client_optimizer_state_path(experiment["optimizer_state_dir"], client_id)
+    temporary = path.with_suffix(".tmp")
+    torch.save(optimizer.state_dict(), temporary)
+    os.replace(temporary, path)
+
+
+def _adam_step_count(optimizer: torch.optim.Optimizer) -> float:
+    steps = [
+        float(state["step"]) for state in optimizer.state.values() if "step" in state
+    ]
+    return max(steps) if steps else 0.0
+
+
+def _set_learning_rate(optimizer: torch.optim.Optimizer, learning_rate: float) -> None:
+    for group in optimizer.param_groups:
+        group["lr"] = float(learning_rate)
 
 
 def _write_rows(path: Path, rows: Sequence[dict[str, Any]]) -> None:
@@ -402,15 +597,34 @@ class FlowerClassificationClient:
         model.to(device)
         generator = torch.Generator().manual_seed(seed)
         dataset = CombinedArtifactDataset(artifact, self.indices)
-        train_loader = DataLoader(dataset, batch_size=int(self.experiment["classification_batch_size"]), shuffle=True, num_workers=0, generator=generator)
+        batch_size = int(self.experiment["classification_batch_size"])
+        train_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=0, generator=generator)
+        # Unshuffled and separate, so measuring the start/end loss draws nothing from the
+        # training generator and leaves the training batch order unchanged.
+        measure_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=0)
         optimizer = torch.optim.Adam(model.parameters(), lr=float(config["learning_rate"]), weight_decay=float(self.experiment["weight_decay"]))
+        adam_steps_before = _prepare_client_optimizer(optimizer, self.experiment, self.client_id, server_round)
         criterion = nn.CrossEntropyLoss()
+        local_epochs = int(self.experiment["local_epochs"])
+        start_loss, start_accuracy, _, _ = _run_classification_epoch(
+            model, measure_loader, criterion, device, None, collect_outputs=False
+        )
         online_loss = 0.0
         online_accuracy = 0.0
-        for _ in range(int(self.experiment["local_epochs"])):
+        local_steps = 0
+        for local_epoch in range(local_epochs):
+            _set_learning_rate(optimizer, local_epoch_learning_rate(
+                self.experiment["lr_schedule"], float(config["learning_rate"]),
+                float(self.experiment["minimum_learning_rate"]), local_epoch, local_epochs,
+            ))
             online_loss, online_accuracy, _, _ = _run_classification_epoch(
                 model, train_loader, criterion, device, optimizer, collect_outputs=False
             )
+            local_steps += len(train_loader)
+        end_loss, end_accuracy, _, _ = _run_classification_epoch(
+            model, measure_loader, criterion, device, None, collect_outputs=False
+        )
+        _save_client_optimizer(optimizer, self.experiment, self.client_id)
         arrays = get_parameters(model)
         if not all(np.isfinite(value).all() for value in arrays):
             raise FloatingPointError(f"{self.client_id} returned non-finite parameters.")
@@ -418,6 +632,13 @@ class FlowerClassificationClient:
             "client_id": self.client_id,
             "local_online_cross_entropy": float(online_loss),
             "local_online_accuracy": float(online_accuracy),
+            "local_start_cross_entropy": float(start_loss),
+            "local_end_cross_entropy": float(end_loss),
+            "local_start_accuracy": float(start_accuracy),
+            "local_end_accuracy": float(end_accuracy),
+            "local_steps": float(local_steps),
+            "adam_steps_before_round": float(adam_steps_before),
+            "adam_steps_after_round": _adam_step_count(optimizer),
             "learning_rate": float(config["learning_rate"]),
             "server_round": float(server_round),
         }
@@ -452,21 +673,37 @@ class FlowerResidualClient:
         if set(dataset_uids) != set(self.run_uids) or len(dataset_uids) != len(self.run_uids):
             raise AssertionError(f"{self.client_id} regression dataset does not match run ownership.")
         generator = torch.Generator().manual_seed(seed)
-        train_loader = DataLoader(dataset, batch_size=int(self.experiment["regression_run_batch_size"]), shuffle=True, num_workers=0, generator=generator, collate_fn=collate_whole_runs)
+        batch_size = int(self.experiment["regression_run_batch_size"])
+        train_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=0, generator=generator, collate_fn=collate_whole_runs)
+        # Unshuffled and separate, so measuring the start/end loss draws nothing from the
+        # training generator and leaves the training batch order unchanged.
+        measure_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=0, collate_fn=collate_whole_runs)
         model = build_zero_initialized_residual_model()
         set_parameters(model, parameters)
         device = torch.device("cpu")
         model.to(device)
         optimizer = torch.optim.Adam(model.parameters(), lr=float(config["learning_rate"]), weight_decay=float(self.experiment["weight_decay"]))
+        adam_steps_before = _prepare_client_optimizer(optimizer, self.experiment, self.client_id, server_round)
         criterion = nn.MSELoss()
-        observed_uids: list[str] = []
-        for _ in range(int(self.experiment["local_epochs"])):
+        local_epochs = int(self.experiment["local_epochs"])
+        start_loss = float(_run_group_epoch(model, measure_loader, criterion, device, None)["loss"])
+        local_steps = 0
+        for local_epoch in range(local_epochs):
+            _set_learning_rate(optimizer, local_epoch_learning_rate(
+                self.experiment["lr_schedule"], float(config["learning_rate"]),
+                float(self.experiment["minimum_learning_rate"]), local_epoch, local_epochs,
+            ))
             result = _run_group_epoch(model, train_loader, criterion, device, optimizer)
-            observed_uids.extend(str(uid) for uid in result["run_uids"])
-        if observed_uids != list(dict.fromkeys(observed_uids)):
-            raise AssertionError(f"{self.client_id} saw a run more than once in a local epoch.")
-        if set(observed_uids) != set(self.run_uids):
-            raise AssertionError(f"{self.client_id} did not see every owned run exactly once.")
+            local_steps += len(train_loader)
+            # Checked per epoch: every local epoch must see each owned run exactly once.
+            # Accumulating across epochs would flag every run as repeated once E > 1.
+            epoch_uids = [str(uid) for uid in result["run_uids"]]
+            if len(epoch_uids) != len(set(epoch_uids)):
+                raise AssertionError(f"{self.client_id} saw a run more than once in local epoch {local_epoch}.")
+            if set(epoch_uids) != set(self.run_uids):
+                raise AssertionError(f"{self.client_id} did not see every owned run exactly once in local epoch {local_epoch}.")
+        end_loss = float(_run_group_epoch(model, measure_loader, criterion, device, None)["loss"])
+        _save_client_optimizer(optimizer, self.experiment, self.client_id)
         metrics = _extended_regression_metrics(result["run_actual"], result["run_predicted"])
         arrays = get_parameters(model)
         if not all(np.isfinite(value).all() for value in arrays):
@@ -477,6 +714,11 @@ class FlowerResidualClient:
             "local_online_rmse_mps": metrics["rmse_mps"],
             "local_online_r2": metrics["r2"],
             "local_online_within_0_10_mps_pct": metrics["within_0_10_mps_pct"],
+            "local_start_standardized_mse": start_loss,
+            "local_end_standardized_mse": end_loss,
+            "local_steps": float(local_steps),
+            "adam_steps_before_round": float(adam_steps_before),
+            "adam_steps_after_round": _adam_step_count(optimizer),
             "learning_rate": float(config["learning_rate"]),
             "server_round": float(server_round),
         }
@@ -708,7 +950,10 @@ def audit_combined_iid_flower_setup(
     means, scale, residual_audit = _federated_residual_baseline(regression, partitions)
     setup = {
         "framework": "Flower 1.29 legacy simulation API",
-        "aggregation": "FedAvg",
+        "aggregation": config["aggregation"],
+        "server_optimizer": config["server_optimizer"],
+        "client_optimizer_state": config["client_optimizer_state"],
+        "lr_schedule": config["lr_schedule"],
         "num_clients": config["num_clients"],
         "partition_scheme": config["partition_scheme"],
         "production_rounds": config["num_rounds"],
@@ -743,7 +988,8 @@ def _fit_metric_aggregation(metrics: list[tuple[int, dict[str, Any]]]) -> dict[s
             key
             for _, values in metrics
             for key, value in values.items()
-            if key.startswith("local_online_") and isinstance(value, (int, float))
+            if key.startswith(("local_online_", "local_start_", "local_end_"))
+            and isinstance(value, (int, float))
         }
     )
     return {
@@ -773,7 +1019,7 @@ def _run_flower_core(
     try:
         from flwr.common import ndarrays_to_parameters, parameters_to_ndarrays
         from flwr.server import ServerConfig
-        from flwr.server.strategy import FedAvg
+        from flwr.server.strategy import FedAdam, FedAvg
         from flwr.simulation import start_simulation
     except ImportError as exc:
         raise RuntimeError("Flower with simulation dependencies is required.") from exc
@@ -785,6 +1031,13 @@ def _run_flower_core(
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
     history_path = output_dir / "global_train_history.csv"
     client_history_path = output_dir / "local_client_fit_history.csv"
+    # Wiped at every run start: state left by an earlier run in the same directory would
+    # otherwise be loaded at round 2 and make the run depend on its predecessor.
+    optimizer_state_dir = output_dir / "client_optimizer_state"
+    if optimizer_state_dir.exists():
+        shutil.rmtree(optimizer_state_dir)
+    if config["client_optimizer_state"] == "persistent":
+        optimizer_state_dir.mkdir(parents=True)
     seeding = set_random_seeds(config["seed"])
     assert_determinism_flags()
     torch.set_num_threads(max(1, int(config["client_num_cpus"])))
@@ -896,7 +1149,8 @@ def _run_flower_core(
         row["learning_rate"] = (
             config["initial_learning_rate"]
             if server_round == 0
-            else cosine_round_learning_rate(
+            else round_learning_rate(
+                config["lr_schedule"],
                 server_round,
                 config["initial_learning_rate"],
                 config["minimum_learning_rate"],
@@ -920,8 +1174,22 @@ def _run_flower_core(
         "regression_run_batch_size": config["regression_run_batch_size"],
         "local_epochs": config["local_epochs"],
         "weight_decay": config["weight_decay"],
+        "minimum_learning_rate": config["minimum_learning_rate"],
+        "lr_schedule": config["lr_schedule"],
+        "client_optimizer_state": config["client_optimizer_state"],
+        "optimizer_state_dir": str(optimizer_state_dir),
     }
     partitions_by_id = {partition.client_id: partition for partition in partitions}
+    if task == "classification":
+        step_budget = gradient_step_budget(
+            {p.client_id: len(p.classification_indices) for p in partitions},
+            config["classification_batch_size"], config["local_epochs"], num_rounds,
+        )
+    else:
+        step_budget = gradient_step_budget(
+            {p.client_id: len(p.run_uids) for p in partitions},
+            config["regression_run_batch_size"], config["local_epochs"], num_rounds,
+        )
 
     def client_fn(context: Any) -> Any:
         raw_id = _client_id_from_context(context)
@@ -950,7 +1218,8 @@ def _run_flower_core(
     def fit_config(server_round: int) -> dict[str, float | int]:
         return {
             "server_round": int(server_round),
-            "learning_rate": cosine_round_learning_rate(
+            "learning_rate": round_learning_rate(
+                config["lr_schedule"],
                 server_round,
                 config["initial_learning_rate"],
                 config["minimum_learning_rate"],
@@ -958,7 +1227,12 @@ def _run_flower_core(
             ),
         }
 
-    class TrackingFedAvg(FedAvg):
+    base_strategy = FedAdam if config["aggregation"] == "FedAdam" else FedAvg
+
+    # FedAdam subclasses FedAvg (via FedOpt) and calls FedAvg.aggregate_fit for the
+    # weighted average before taking its server step, so the ordering fix and every
+    # check below apply unchanged to both.
+    class TrackingFedAvg(base_strategy):
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             super().__init__(*args, **kwargs)
             self.latest_parameters = kwargs["initial_parameters"]
@@ -1029,6 +1303,9 @@ def _run_flower_core(
             return aggregated_parameters, aggregated_metrics
 
     initial_parameters = ndarrays_to_parameters(initial_arrays)
+    server_kwargs: dict[str, float] = {}
+    if config["aggregation"] == "FedAdam":
+        server_kwargs = dict(config["server_optimizer"])
     strategy = TrackingFedAvg(
         fraction_fit=1.0,
         fraction_evaluate=0.0,
@@ -1040,6 +1317,7 @@ def _run_flower_core(
         on_fit_config_fn=fit_config,
         fit_metrics_aggregation_fn=_fit_metric_aggregation,
         evaluate_fn=evaluate_global_train,
+        **server_kwargs,
     )
     source_root = config["project_root"] / "src"
     start_simulation(
@@ -1075,6 +1353,27 @@ def _run_flower_core(
         )
     test_guard.assert_untouched_during_training()
     test_guard.unseal()
+    # The step budget is reported from the formula, so check it against what the
+    # clients actually took rather than trusting it.
+    measured_steps = int(sum(float(row["local_steps"]) for row in strategy.client_rows))
+    if measured_steps != step_budget["total_gradient_steps"]:
+        raise AssertionError(
+            f"Clients took {measured_steps} optimizer steps; the budget formula says "
+            f"{step_budget['total_gradient_steps']}."
+        )
+    if config["client_optimizer_state"] == "persistent":
+        # Adam's step counter must keep counting across rounds; if it reset, persistence
+        # silently did nothing.
+        for row in strategy.client_rows:
+            if float(row["adam_steps_before_round"]) + float(row["local_steps"]) != float(
+                row["adam_steps_after_round"]
+            ):
+                raise AssertionError(f"Adam step count did not carry over: {row}")
+        final_round_rows = [r for r in strategy.client_rows if int(r["round"]) == num_rounds]
+        for row in final_round_rows:
+            expected = step_budget["consecutive_steps_per_round_by_client"][row["client_id"]] * num_rounds
+            if float(row["adam_steps_after_round"]) != float(expected):
+                raise AssertionError(f"{row['client_id']} Adam ran {row['adam_steps_after_round']} steps, expected {expected}.")
     final_arrays = parameters_to_ndarrays(strategy.latest_parameters)
     final_model = (
         _build_classification_model(artifact)
@@ -1085,9 +1384,17 @@ def _run_flower_core(
     core_audit = {
         "seeding": seeding,
         "framework": "Flower",
-        "flower_strategy": "FedAvg",
+        "flower_strategy": config["aggregation"],
+        "server_optimizer_hyperparameters": config["server_optimizer"],
         "num_rounds": num_rounds,
         "local_epochs_per_round": config["local_epochs"],
+        "client_optimizer_state": config["client_optimizer_state"],
+        "lr_schedule": config["lr_schedule"],
+        "gradient_step_budget": {
+            **step_budget,
+            "measured_total_gradient_steps": measured_steps,
+            "centralized_reference": _centralized_step_budget(task, len(train_dataset), config),
+        },
         "successful_client_fits": len(strategy.client_rows),
         "expected_clients_every_round": sorted(expected_examples),
         "fedavg_num_examples_by_client": expected_examples,
@@ -1095,13 +1402,24 @@ def _run_flower_core(
         "round_one_parameters_changed": strategy.round_one_parameter_changed,
         "global_train_evaluation_rounds": [int(row["round"]) for row in global_rows],
         "test_evaluations_during_training": len(test_guard.accesses_while_sealed),
-        "local_optimizer": "Adam recreated independently on every client and round",
-        "client_shuffle_seed": "4601 + 1000*server_round + integer_client_id",
-        "learning_rate_schedule": "round-wise cosine annealing; t=round-1",
-        "round_1_learning_rate": cosine_round_learning_rate(
-            1, config["initial_learning_rate"], config["minimum_learning_rate"], num_rounds
+        "local_optimizer": (
+            "Adam recreated independently on every client and round"
+            if config["client_optimizer_state"] == "fresh"
+            else "Adam state persisted per client across rounds; model parameters "
+            "replaced by the global model and LR reset from the schedule each round"
         ),
-        "final_round_learning_rate": cosine_round_learning_rate(
+        "client_shuffle_seed": "4601 + 1000*server_round + integer_client_id",
+        "learning_rate_schedule": {
+            "cosine_over_rounds": "round-wise cosine annealing; t=round-1",
+            "constant": "initial learning rate throughout",
+            "cosine_restart_per_round": "cosine over local epochs, restarting every round",
+        }[config["lr_schedule"]],
+        "round_1_learning_rate": round_learning_rate(
+            config["lr_schedule"], 1, config["initial_learning_rate"],
+            config["minimum_learning_rate"], num_rounds,
+        ),
+        "final_round_learning_rate": round_learning_rate(
+            config["lr_schedule"],
             num_rounds,
             config["initial_learning_rate"],
             config["minimum_learning_rate"],
@@ -1140,7 +1458,7 @@ def _finalize_classification(
             "model_state_dict": model.state_dict(),
             "architecture": "SimpleCNN1D(9 input channels, 8 class logits)",
             "framework": "Flower",
-            "strategy": "FedAvg",
+            "strategy": config["aggregation"],
             "class_to_index": artifact["class_to_index"],
             "selected_channels_one_based": artifact["summary"][
                 "selected_channels_one_based"
@@ -1214,7 +1532,7 @@ def _finalize_classification(
         ),
         "seeding": core_audit["seeding"],
         "framework": "Flower",
-        "strategy": "FedAvg",
+        "strategy": config["aggregation"],
         "architecture": "SimpleCNN1D with GroupNorm; 9 inputs and 8 outputs",
         "rounds": num_rounds,
         "local_epochs_per_round": config["local_epochs"],
@@ -1333,7 +1651,7 @@ def _finalize_regression(
             "model_state_dict": model.state_dict(),
             "architecture": "SimpleCNN1D(9 input channels, 1 standardized residual output)",
             "framework": "Flower",
-            "strategy": "FedAvg weighted by unique client runs",
+            "strategy": f"{config['aggregation']} weighted by unique client runs",
             "selected_channels_one_based": artifact["summary"][
                 "selected_channels_one_based"
             ],
@@ -1439,23 +1757,44 @@ def _finalize_regression(
     # The degenerate-model detector, run before the summary is written so a collapsed
     # run cannot be reported as a near-match to centralized (R1). Both gates are enforced
     # on the residual path: this is where the collapse happened.
-    health = check_regression_health(
-        actual=[row["actual_speed_mps"] for row in run_rows],
-        predicted=[row["predicted_speed_mps"] for row in run_rows],
-        baseline=[row["source_subject_train_mean_mps"] for row in run_rows],
-        final_standardized_mse=float(final_history["global_train_standardized_mse"]),
-        enforced_gates=("degeneracy", "skill"),
-        run_label=(
-            f"combined_{config['num_clients']}client_{config['partition_scheme']}"
-            "_flower_residual_run_regression"
-        ),
-        # Gate degeneracy on the window-level residual, which is what the network emits.
-        # The reported speed is baseline + residual, so a constant model still produces
-        # one value per source/subject stratum (8) and looks less degenerate than it is.
-        model_output=[row["predicted_residual_mps"] for row in window_rows],
-        model_output_name="window predicted residual",
-        allow_degenerate=allow_degenerate,
-    )
+    try:
+        health = check_regression_health(
+            actual=[row["actual_speed_mps"] for row in run_rows],
+            predicted=[row["predicted_speed_mps"] for row in run_rows],
+            baseline=[row["source_subject_train_mean_mps"] for row in run_rows],
+            final_standardized_mse=float(final_history["global_train_standardized_mse"]),
+            enforced_gates=("degeneracy", "skill"),
+            run_label=(
+                f"combined_{config['num_clients']}client_{config['partition_scheme']}"
+                "_flower_residual_run_regression"
+            ),
+            # Gate degeneracy on the window-level residual, which is what the network emits.
+            # The reported speed is baseline + residual, so a constant model still produces
+            # one value per source/subject stratum (8) and looks less degenerate than it is.
+            model_output=[row["predicted_residual_mps"] for row in window_rows],
+            model_output_name="window predicted residual",
+            allow_degenerate=allow_degenerate,
+        )
+    except DegenerateModelError as error:
+        # No training_summary.json is written for a failed run, so it cannot be mistaken
+        # for a result. The failure itself is recorded: a sweep reports its failures.
+        (output_dir / "degenerate_model_check_FAILED.json").write_text(
+            json.dumps(
+                {
+                    "status": "FAILED: enforced detector gate(s); not a valid result",
+                    "message": str(error),
+                    "degenerate_model_check": error.report,
+                    "final_global_train_metrics": {
+                        key.removeprefix("global_train_"): value
+                        for key, value in final_history.items()
+                        if key.startswith("global_train_")
+                    },
+                    "integrity_audit": core_audit,
+                },
+                indent=2,
+            )
+        )
+        raise
     # Window-level distinctness is the sharper diagnostic: the collapse produced one
     # distinct predicted residual across all 238 test windows, which the 28 run-level
     # rows can mask because they differ by their per-subject baselines.
@@ -1479,7 +1818,7 @@ def _finalize_regression(
         ),
         "seeding": core_audit["seeding"],
         "framework": "Flower",
-        "strategy": "FedAvg weighted by unique complete training runs",
+        "strategy": f"{config['aggregation']} weighted by unique complete training runs",
         "architecture": "Unchanged SimpleCNN1D with one standardized residual output",
         "rounds": num_rounds,
         "local_epochs_per_round": config["local_epochs"],
@@ -1493,7 +1832,9 @@ def _finalize_regression(
             "train_residual_scale_mps": residual_scale_mps,
             "prediction": "source_subject_train_mean + residual_scale * mean(window standardized residual predictions)",
             "optimization_unit": "complete run",
-            "client_aggregation_weight": "unique complete training runs (37/38/37)",
+            "client_aggregation_weight": "unique complete training runs ("
+            + "/".join(str(n) for _, n in sorted(core_audit["fedavg_num_examples_by_client"].items()))
+            + ")",
         },
         "round_0_global_train_metrics": {
             key.removeprefix("global_train_"): value

@@ -4,6 +4,77 @@ What changed, and every number that moved as a result. Newest first.
 
 ---
 
+## Session 3 — R1 fix: implementation (2026-10-18; sweep results to follow)
+
+Branch `s3-r1-fix`. Covers `docs/review_response_plan.md` §2 R1. The winner rule,
+`docs/s3_winner_rule.md`, was committed (`407f03f`) before any of this code was written.
+`_run_flower_core` was edited in place, not refactored (cut in the runbook).
+
+### Defect found: the regression client crashed at `local_epochs > 1`
+
+`FlowerResidualClient.fit` accumulated the run UIDs it saw across *all* local epochs,
+then asserted there were no duplicates. At E ≥ 2 every run appears once per epoch, so
+every E > 1 config raised `"saw a run more than once in a local epoch"` in round 1. That
+is four of the six sweep configs. The check now runs once per epoch: every epoch must see
+each owned run exactly once. Classification had no such check and was unaffected. Test:
+`test_regression_client_trains_more_than_one_local_epoch`.
+
+### What was added
+
+- **Config keys** (validated; defaults reproduce pre-S3 behaviour):
+  - `federated.aggregation ∈ {FedAvg, FedAdam}`
+  - `federated.client_optimizer_state ∈ {fresh, persistent}`
+  - `training.lr_schedule ∈ {cosine_over_rounds, constant, cosine_restart_per_round}`
+  - an optional `federated.server_optimizer` block for FedAdam
+- **FedAdam** server hyperparameters are fixed at the pre-registered η 1e-2, β₁ 0.9,
+  β₂ 0.99, τ 1e-3. The tracking strategy subclasses whichever base is configured, so the
+  client-ordering fix and all aggregation checks apply to both.
+- **Client optimizer persistence.** Each client saves its Adam `state_dict` to
+  `<run>/<task>/client_optimizer_state/<client_id>.pt` and reloads it next round. Model
+  parameters are still replaced by the global model, and the LR is reset from the
+  schedule. The directory is wiped at run start. A missing file at round ≥ 2, or a file
+  present before round 1, raises. At run end, the Adam step counters are checked against
+  the step-budget formula.
+- **Local-training instrumentation** in `local_client_fit_history.csv`: loss at the
+  start and end of each client's local training (measured on an unshuffled loader, so it
+  draws nothing from the training RNG), measured local steps, and Adam steps before and
+  after each round.
+- **Matched budget** in every run summary: FL total gradient steps = Σ_k ⌈n_k/B⌉ × E × R,
+  checked against the steps the clients actually took, next to the centralized
+  reference. Regression: IID K=3 is 1800·E and natural K=2 is 1680·E, against 1680
+  centralized. Classification: centralized is 2340.
+- **Failure record.** A regression run that fails the detector (override off) writes
+  `degenerate_model_check_FAILED.json` and no `training_summary.json`.
+  `DegenerateModelError` now carries the detector report.
+- **Runner** `--set SECTION.KEY=VALUE`, which requires `--output-root`.
+- **Sweep:** `src/redo_by_sara/r1_sweep.py` (the winner rule as code) and
+  `scripts/run_r1_sweep.py` (driver). Preflight refuses to start unless the rule doc is
+  committed and unmodified, `src/` `scripts/` `configs/` are clean, and the §6
+  determinism test passes. Child runs execute under `caffeinate -i` on macOS.
+- Fixed in passing: the regression summary's `client_aggregation_weight` was hard-coded
+  to "(37/38/37)", which was wrong for every K=2 run. It is now derived from the
+  partition.
+
+### Verification
+
+- **Defaults are bitwise unchanged.** New code at default settings, 2 rounds,
+  `client_num_cpus: 4`, compared against the pre-S3 smoke runs on this machine. For IID
+  K=3 and natural K=2, both tasks, every compared file (`global_train_history.csv`,
+  `test_predictions.csv`, `test_window_predictions.csv`, `test_run_predictions.csv`) is
+  byte-identical.
+- **Persistent-mode determinism (rule §6):** two runs of natural K=2, E=2, persistent,
+  2 rounds, give bitwise-identical final parameters, Adam state files, and client
+  history.
+- **FedAdam + persistent + E=2, 2 rounds, override off:** classification completed.
+  Regression failed the detector as expected (standardized MSE 0.9999, skill −0.0011)
+  and wrote only the failure record. In that run, client_0's local loss went
+  1.5715 → 1.5715 over 20 local steps: the R1 mechanism, measured directly.
+- `pytest`: **100 passed, 1 skipped** (cudnn, macOS). `-m "not requires_data"`: 85 passed.
+
+**No reported number moved.** Sweep results go in the next entry.
+
+---
+
 ## Machine migration — M5 environment and centralized baselines re-run (2026-10-18)
 
 On `main`, between S2 and S3. The project moved to a fresh clone on an M5 MacBook Air.

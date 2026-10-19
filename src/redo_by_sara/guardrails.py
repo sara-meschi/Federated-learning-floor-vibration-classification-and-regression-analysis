@@ -175,7 +175,15 @@ class GuardedWriter:
 
 
 class DegenerateModelError(RuntimeError):
-    """Raised when a regression run failed an enforced health gate."""
+    """Raised when a regression run failed an enforced health gate.
+
+    ``report`` carries the full health report, so a caller can record *why* a run
+    failed (a sweep reports its failing configurations) without completing the run.
+    """
+
+    def __init__(self, message: str, report: dict[str, Any] | None = None) -> None:
+        super().__init__(message)
+        self.report = report
 
 
 #: A model must produce more than this many distinct predictions to count as a model
@@ -358,7 +366,7 @@ def check_regression_health(
         + "; ".join(enforced_failures)
     )
     if not allow_degenerate:
-        raise DegenerateModelError(message)
+        raise DegenerateModelError(message, report)
 
     report["WARNING"] = (
         "This run failed an enforced gate and was allowed to complete under "

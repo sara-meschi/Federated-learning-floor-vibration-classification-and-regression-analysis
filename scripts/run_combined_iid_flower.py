@@ -5,6 +5,8 @@ import json
 import sys
 from pathlib import Path
 
+import yaml
+
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -47,9 +49,29 @@ def main() -> None:
             "invalid. Needed only for the known-collapsed pre-R1 baseline runs."
         ),
     )
+    parser.add_argument(
+        "--set",
+        action="append",
+        default=[],
+        metavar="SECTION.KEY=VALUE",
+        help=(
+            "Override one config key before validation, e.g. "
+            "--set federated.local_epochs=5. Repeatable; VALUE is parsed as YAML. "
+            "Requires --output-root so an override cannot overwrite production results."
+        ),
+    )
     args = parser.parse_args()
 
-    config = load_combined_iid_flower_config(args.config)
+    overrides = {}
+    for item in args.set:
+        key, separator, value = item.partition("=")
+        if not separator or not key:
+            parser.error(f"--set expects SECTION.KEY=VALUE, got {item!r}")
+        overrides[key] = yaml.safe_load(value)
+    if overrides and args.output_root is None and not args.verify_only:
+        parser.error("--set requires --output-root so production results are protected.")
+
+    config = load_combined_iid_flower_config(args.config, overrides)
     if args.verify_only:
         prepared = prepare_combined_iid_flower_experiment(
             config, args.output_root, write_outputs=False
