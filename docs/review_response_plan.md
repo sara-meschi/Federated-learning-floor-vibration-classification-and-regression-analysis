@@ -86,7 +86,7 @@ This is the paper's controlled non-IID axis. It is physically motivated: differe
 
 **Parameterize the overlap over POSITIONS, not channels.** The 9 channels cover **8 distinct hallway positions**: Sensors 1–7 are one unit each, and channels 8 (x) and 10 (z) are two separate uniaxial units **co-located at an eighth point** (see `docs/sensor_layout.md`). Partition the 8 positions, then expand to channel indices; channels 8 and 10 always travel together. Splitting them is possible in hardware terms but gains a client no independent spatial coverage and breaks the "each site instruments one stretch of hallway" argument.
 
-Define a shared core of positions held by all clients plus per-client private positions, controlled by an overlap ratio ρ. Sweep **ρ ∈ {1.0, 0.67, 0.33, 0.0}**, where ρ=1.0 recovers IID and ρ=0.0 is fully disjoint (positions {1,2,3}/{4,5,6}/{7,8} at K=3, giving 3 channels each). Prior experiments showed the disjoint case fails to converge — **report that, do not hide it.** "Performance degrades smoothly with sensor overlap and collapses at zero overlap" is a finding, and it is the most interesting point on the curve.
+Define a shared core of positions held by all clients plus per-client private positions, controlled by an overlap ratio ρ. Sweep **ρ ∈ {1.0, 0.67, 0.375, 0.0}**, where ρ=1.0 recovers IID and ρ=0.0 is fully disjoint (positions {1,2,3}/{4,5,6}/{7,8} at K=3, giving 3 channels each). Prior experiments showed the disjoint case fails to converge — **report that, do not hide it.** "Performance degrades smoothly with sensor overlap and collapses at zero overlap" is a finding, and it is the most interesting point on the curve.
 
 Log **positions per client and channels per client separately** — the client holding position 8 gets 3 channels from only 2 positions.
 
@@ -272,7 +272,7 @@ Build a single module (e.g. `paper_figures.py`) that produces every figure and t
 - **T1** Dataset: sources, subjects, runs (161 → 140 usable, with the subject-006 exclusion stated), windows per task, split counts, speed mean/std/range **and within-subject std**.
 - **T2** Centralized reference, both tasks, with baseline row and skill score.
 - **T3** FL under IID at **K=2 and K=3**: {centralized, FedAvg, FedAdam, local-only} × both tasks.
-- **T4** FL under non-IID: {natural cross-session (K=2), channel-availability at ρ ∈ {0.67, 0.33, 0.0} (K=3)} × {local-only, FedAvg, robust variant, centralized}. Every row pairs with a matched-K IID row from T3. Channel rows report both evaluation protocols (global 9-channel test and client-masked test).
+- **T4** FL under non-IID: {natural cross-session (K=2), channel-availability at ρ ∈ {0.67, 0.375, 0.0} (K=3)} × {local-only, FedAvg, robust variant, centralized}. Every row pairs with a matched-K IID row from T3. Channel rows report both evaluation protocols (global 9-channel test and client-masked test).
 - **T6** *(optional, cut first)* Centralized architecture comparison: SimpleCNN1D vs small 1D-ResNet, both tasks, centralized only. See §2 R10.
 - **T5** Communication and compute cost.
 - All tables: mean ± std over seeds, and the run-level metric as primary.
@@ -291,7 +291,7 @@ Indicative pacing. If a stage slips, cut from the bottom of the list, never from
 | 1–3 | S1, S2 | Guardrails (§3 items 1, 2, 4, 5 + R9), then the partitioner rewrite (§3 item 3). Nothing else runs until this lands. |
 | 4–6 | S3 | §2 R1: fix the regression collapse. Sweep local epochs × server optimizer. Acceptance criteria must pass. |
 | 7–8 | S4, S5 | §2 R2 metrics re-cut (skill score) and R5 local-only baseline; then §1.3 position-masking and the ρ sweep. |
-| 9–13 | S6 | Experiment matrix: K=2 {IID, natural, local-only} and K=3 {IID, channel ρ=0.67/0.33/0.0, local-only}, both tasks, both evaluation protocols, 3 init seeds, ≥3 position assignments. |
+| 9–13 | S6 | Experiment matrix: K=2 {IID, natural, local-only} and K=3 {IID, channel ρ=0.67/0.375/0.0, local-only}, both tasks, both evaluation protocols, 3 init seeds, ≥3 position assignments. |
 | 14–15 | S7 | §2 R3 end-to-end path; R4 run-level metrics + source probe + subject-003 control. |
 | 16–17 | S8 | §4 figures and tables. Writing runs in parallel from day 9 using placeholder numbers. |
 | 18–20 | S9 | Buffer, then R10 architecture comparison only if genuinely free. |

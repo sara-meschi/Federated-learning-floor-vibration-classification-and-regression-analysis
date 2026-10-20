@@ -254,7 +254,7 @@ def _real_client_setup(tmp_path: Path, state: str, local_epochs: int):
     partitions, _ = build_combined_partitions(classification, regression, scheme="iid", num_clients=3, seed=4601)
     means, scale, _ = _federated_residual_baseline(regression, partitions)
     experiment = {
-        "seed": 4601,
+        "init_seed": 4601,
         "torch_threads": 3,
         "classification_batch_size": 32,
         "regression_run_batch_size": 4,

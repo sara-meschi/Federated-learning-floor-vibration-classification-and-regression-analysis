@@ -34,6 +34,12 @@ from .guardrails import (
     set_random_seeds,
 )
 from .models import SimpleCNN1D
+from .regression_metrics import (
+    PER_SUBJECT_FILENAME,
+    point_metrics,
+    report_from_run_rows,
+    write_per_subject_csv,
+)
 
 
 SPEED_LEFT_COLUMN = "Gait - Lower Limb - Gait Speed L (m/s) [mean]"
@@ -173,7 +179,7 @@ def _distribution(values: np.ndarray) -> dict[str, float | int]:
 
 def build_regression_artifact(config: dict[str, Any]) -> dict[str, object]:
     records = discover_run_records(config)
-    split_by_uid = assign_run_splits(records, config["seed"], config["test_ratio"])
+    split_by_uid = assign_run_splits(records, config["split_seed"], config["test_ratio"])
     speed_by_uid, label_details_by_uid = load_speed_labels(config, records, split_by_uid)
 
     # Config channels are 1-indexed; numpy needs 0-indexed. CLAUDE.md requires this
@@ -308,7 +314,7 @@ def build_regression_artifact(config: dict[str, Any]) -> dict[str, object]:
         "step_seconds": config["step_seconds"],
         "train_ratio": config["train_ratio"],
         "test_ratio": config["test_ratio"],
-        "split_seed": config["seed"],
+        "split_seed": config["split_seed"],
         "timing_assumption": config["timing_assumption"],
         "speed_distribution_all_runs": _distribution(
             np.asarray([speed_by_uid[uid] for uid in sorted(train_run_uids | test_run_uids)])
@@ -364,24 +370,6 @@ def save_regression_artifact(
         writer.writerows(manifest)
 
 
-def regression_metrics(actual: np.ndarray, predicted: np.ndarray) -> dict[str, float]:
-    actual = np.asarray(actual, dtype=np.float64).reshape(-1)
-    predicted = np.asarray(predicted, dtype=np.float64).reshape(-1)
-    residual = predicted - actual
-    mse = float(np.mean(residual**2))
-    mae = float(np.mean(np.abs(residual)))
-    bias = float(np.mean(residual))
-    denominator = float(np.sum((actual - actual.mean()) ** 2))
-    r2 = float(1.0 - np.sum(residual**2) / denominator) if denominator > 1e-12 else 0.0
-    within_0_10 = float(100.0 * np.mean(np.abs(residual) <= 0.10))
-    return {
-        "mse": mse,
-        "rmse_mps": float(np.sqrt(mse)),
-        "mae_mps": mae,
-        "bias_mps": bias,
-        "r2": r2,
-        "within_0_10_mps_pct": within_0_10,
-    }
 
 
 def _run_epoch(
@@ -462,7 +450,7 @@ def _per_subject_metrics(
     subject_array = np.asarray(subjects)
     for subject_id in sorted(set(subjects)):
         mask = subject_array == subject_id
-        result[subject_id] = regression_metrics(actual[mask], predicted[mask])
+        result[subject_id] = point_metrics(actual[mask], predicted[mask])
     return result
 
 
@@ -620,15 +608,15 @@ def _add_train_run_mean_baselines(
     def metrics_for(rows: Sequence[dict[str, Any]]) -> dict[str, dict[str, float]]:
         actual = np.asarray([float(row["actual_speed_mps"]) for row in rows])
         return {
-            "overall_train_run_mean": regression_metrics(
+            "overall_train_run_mean": point_metrics(
                 actual,
                 np.asarray([float(row["overall_train_run_mean_mps"]) for row in rows]),
             ),
-            "subject_train_run_mean": regression_metrics(
+            "subject_train_run_mean": point_metrics(
                 actual,
                 np.asarray([float(row["subject_train_run_mean_mps"]) for row in rows]),
             ),
-            "source_subject_train_run_mean": regression_metrics(
+            "source_subject_train_run_mean": point_metrics(
                 actual,
                 np.asarray(
                     [float(row["source_subject_train_run_mean_mps"]) for row in rows]
@@ -642,7 +630,7 @@ def _add_train_run_mean_baselines(
 def train_and_evaluate_regression(
     artifact: dict[str, object], config: dict[str, Any]
 ) -> dict[str, Any]:
-    seeding = set_random_seeds(config["seed"])
+    seeding = set_random_seeds(config["init_seed"])
     assert_determinism_flags()
     assert_split_integrity(artifact, "regression artifact (load)")
     output_dir: Path = config["output_dir"]
@@ -651,7 +639,7 @@ def train_and_evaluate_regression(
     test_indices = artifact["test_indices"].tolist()
     train_dataset = CombinedRegressionDataset(artifact, train_indices)
     test_dataset = CombinedRegressionDataset(artifact, test_indices)
-    generator = torch.Generator().manual_seed(config["seed"])
+    generator = torch.Generator().manual_seed(config["init_seed"])
     train_loader = DataLoader(
         train_dataset,
         batch_size=config["batch_size"],
@@ -693,7 +681,7 @@ def train_and_evaluate_regression(
         train_loss, predicted, actual = _run_epoch(
             model, train_eval_loader, criterion, device, optimizer=None
         )
-        metrics = regression_metrics(actual, predicted)
+        metrics = point_metrics(actual, predicted)
         row = {
             "epoch": float(epoch),
             "optimization_loss": optimization_loss,
@@ -717,12 +705,12 @@ def train_and_evaluate_regression(
     test_loss, window_predicted, window_actual = _run_epoch(
         model, test_loader, criterion, device, optimizer=None
     )
-    window_metrics = regression_metrics(window_actual, window_predicted)
+    window_metrics = point_metrics(window_actual, window_predicted)
     run_rows = _aggregate_run_predictions(artifact, test_indices, window_predicted)
     run_actual = np.asarray([row["actual_speed_mps"] for row in run_rows])
     run_predicted = np.asarray([row["predicted_speed_mps"] for row in run_rows])
     run_subjects = [str(row["subject_id"]) for row in run_rows]
-    run_metrics = regression_metrics(run_actual, run_predicted)
+    run_metrics = point_metrics(run_actual, run_predicted)
 
     metadata: list[dict[str, Any]] = artifact["metadata"]
     window_rows: list[dict[str, Any]] = []
@@ -761,7 +749,8 @@ def train_and_evaluate_regression(
             "sample_shape": artifact["summary"]["sample_shape"],
             "target": artifact["summary"]["target"],
             "target_units": "m/s",
-            "seed": config["seed"],
+            "split_seed": config["split_seed"],
+            "init_seed": config["init_seed"],
             "epochs": config["epochs"],
         },
         model_path,
@@ -811,12 +800,19 @@ def train_and_evaluate_regression(
             {row["predicted_speed_mps"] for row in window_rows}
         ),
     }
+    # R2: skill against the lookup, overall and per source with run-level bootstrap CIs,
+    # and the per-subject x source breakdown.
+    regression_evaluation = report_from_run_rows(run_rows, "source_subject_train_run_mean_mps")
+    per_subject_path = output_dir / PER_SUBJECT_FILENAME
+    write_per_subject_csv(per_subject_path, regression_evaluation)
 
     summary = {
         "experiment": artifact["summary"]["experiment"],
         "device": str(device),
         "seeding": seeding,
         "degenerate_model_check": health,
+        "regression_report": regression_evaluation,
+        "test_per_subject_breakdown_path": str(per_subject_path),
         "epochs": config["epochs"],
         "batch_size": config["batch_size"],
         "initial_learning_rate": config["learning_rate"],

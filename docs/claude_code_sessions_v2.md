@@ -113,7 +113,7 @@ This is the session the paper depends on. Nothing downstream is worth running un
 >
 > **R6.** Separate the split seed from the initialization seed; a single `config["seed"] = 4601` currently drives both.
 >
-> **§1.3 channel masking.** Partition the 8 hallway **positions**, expand to channel indices; channels 8 and 10 are co-located and travel together. Implement by **masking a 9-channel input** — zero masked channels after normalization, model stays plain `SimpleCNN1D` at 9 input channels, assert identical parameter shapes across clients. Contiguous spatial blocks only — skip the random-assignment variant. Support ρ ∈ {1.0, 0.33, 0.0}. Do not special-case ρ=0.0 — its collapse is a reported result. ρ=1.0 is identical to IID at K=3, so run it once and use it for both.
+> **§1.3 channel masking.** Partition the 8 hallway **positions**, expand to channel indices; channels 8 and 10 are co-located and travel together. Implement by **masking a 9-channel input** — zero masked channels after normalization, model stays plain `SimpleCNN1D` at 9 input channels, assert identical parameter shapes across clients. Contiguous spatial blocks only — skip the random-assignment variant. Support ρ ∈ {1.0, 0.375, 0.0}. Do not special-case ρ=0.0 — its collapse is a reported result. ρ=1.0 is identical to IID at K=3, so run it once and use it for both.
 >
 > **Also add a Dirichlet label-skew partitioner** over subjects at the **run** level, K=3, α = 0.1 only. This is the label-space non-IID axis, paired with the sensor axis above. Keep run indivisibility. If a draw leaves a client with fewer than 2 subjects, resample, and record that a floor was applied since the paper must state it.
 >
@@ -135,7 +135,7 @@ Mostly compute — roughly 26 runs, one overnight. Start it, then write Sections
 > Run the matrix. Both tasks throughout, global 9-channel evaluation only.
 >
 > - **K=2:** IID and natural cross-session, 3 init seeds each; local-only, 1 seed.
-> - **K=3, 1 seed each — sensor axis:** IID (= ρ=1.0), ρ=0.33, ρ=0.0, local-only.
+> - **K=3, 1 seed each — sensor axis:** IID (= ρ=1.0), ρ=0.375, ρ=0.0, local-only.
 > - **K=3, 1 seed — subject axis:** Dirichlet α=0.1. Local-only at K=3 is already covered above.
 >
 > Every run must pass the degenerate detector before its numbers are recorded — flag failures rather than recording them silently. Expect α=0.1 classification to degrade sharply for the same structural reason as ρ=0: a client that never sees a subject contributes nothing about that class. Report it as the characterized endpoint, not a failed run.

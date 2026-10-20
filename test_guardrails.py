@@ -184,14 +184,14 @@ def test_r1_collapse_fails_both_gates() -> None:
         check_regression_health(
             **case,
             final_standardized_mse=1.0000406,
-            enforced_gates=("degeneracy", "skill"),
+            enforced_gates=("degeneracy", "trained"),
             run_label="r1-collapse",
         )
     message = str(excinfo.value)
     # The message names the gated quantity, so a reader can tell at a glance that the
     # detector looked at the residual rather than the baseline-inflated speed.
     assert "1 distinct window predicted residual" in message
-    assert "skill score" in message
+    assert "standardized MSE" in message
     # The exception carries the full report, so a sweep can record why a config failed
     # without the run writing a summary that could be mistaken for a result.
     assert excinfo.value.report is not None
@@ -202,7 +202,7 @@ def test_r1_collapse_fails_both_gates() -> None:
     report = check_regression_health(
         **case,
         final_standardized_mse=1.0000406,
-        enforced_gates=("degeneracy", "skill"),
+        enforced_gates=("degeneracy", "trained"),
         run_label="r1-collapse",
         allow_degenerate=True,
     )
@@ -210,7 +210,10 @@ def test_r1_collapse_fails_both_gates() -> None:
     assert report["degeneracy_evaluated_on"] == "window predicted residual"
     assert report["num_model_outputs"] == NUM_TEST_WINDOWS
     assert report["gates"]["degeneracy"]["passed"] is False
+    assert report["gates"]["trained"]["passed"] is False
+    # Recorded although not enforced: the collapsed model is also worse than the lookup.
     assert report["gates"]["skill"]["passed"] is False
+    assert report["gates"]["skill"]["enforced"] is False
     assert report["passed"] is False
     assert report["allow_degenerate_override_used"] is True
     assert "not a valid result" in report["WARNING"]
@@ -300,7 +303,7 @@ def test_healthy_residual_run_passes_both_gates() -> None:
         predicted=predicted,
         baseline=baseline,
         final_standardized_mse=0.693081,
-        enforced_gates=("degeneracy", "skill"),
+        enforced_gates=("degeneracy", "trained", "skill"),
         run_label="healthy",
     )
     assert report["passed"] is True
@@ -308,7 +311,7 @@ def test_healthy_residual_run_passes_both_gates() -> None:
     assert report["distinct_predictions"] == 28
 
 
-def test_standardized_mse_at_the_trivial_baseline_fails_the_skill_gate() -> None:
+def test_standardized_mse_at_the_trivial_baseline_fails_the_trained_gate() -> None:
     """Standardized MSE of 1.0 means 'predict zero residual' exactly."""
 
     rng = np.random.default_rng(3)
@@ -321,8 +324,44 @@ def test_standardized_mse_at_the_trivial_baseline_fails_the_skill_gate() -> None
             predicted=predicted,
             baseline=baseline,
             final_standardized_mse=0.999902,
-            enforced_gates=("degeneracy", "skill"),
+            enforced_gates=("degeneracy", "trained"),
             run_label="flat-standardized-mse",
+        )
+
+
+def test_s5_policy_records_negative_skill_without_aborting() -> None:
+    """S4/S5 policy: degeneracy + trained enforced, skill reported but never enforced.
+
+    Enforcing skill across seeds would silently drop the seeds whose skill is negative
+    and bias the reported mean. A trained, non-degenerate model with negative skill
+    therefore completes, with the negative score in its report.
+    """
+
+    case = _absolute_speed_case()
+    report = check_regression_health(
+        **case,
+        final_standardized_mse=0.12,
+        enforced_gates=("degeneracy", "trained"),
+        run_label="trained-but-worse-than-lookup",
+    )
+    assert report["passed"] is True
+    assert report["skill_score_vs_subject_mean"] < 0
+    assert report["gates"]["skill"] == {
+        "enforced": False,
+        "passed": False,
+        "failures": report["gates"]["skill"]["failures"],
+    }
+    assert report["gates"]["trained"]["passed"] is True
+
+
+def test_trained_gate_needs_a_standardized_mse() -> None:
+    case = _absolute_speed_case()
+    with pytest.raises(ValueError, match="trained"):
+        check_regression_health(
+            **case,
+            final_standardized_mse=None,
+            enforced_gates=("degeneracy", "trained"),
+            run_label="absolute-with-trained-gate",
         )
 
 

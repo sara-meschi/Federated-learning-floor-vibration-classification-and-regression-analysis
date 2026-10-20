@@ -216,7 +216,9 @@ def test_natural_partition_is_one_client_per_campaign() -> None:
         ("natural", 3, "one client per source"),
         ("iid", 4, "num_clients must be 2 or 3"),
         ("iid", 1, "num_clients must be 2 or 3"),
-        ("dirichlet", 3, "Unknown partition scheme"),
+        ("by_window", 3, "Unknown partition scheme"),
+        # dirichlet is a real scheme since S4 but needs its alpha.
+        ("dirichlet", 3, "dirichlet_alpha is required"),
     ],
 )
 def test_invalid_scheme_or_k_is_refused(scheme: str, num_clients: int, message: str) -> None:
@@ -277,7 +279,10 @@ def test_validator_accepts_k_rounds_and_epochs_as_parameters(tmp_path: Path) -> 
     [
         ({"num_clients": 4}, "num_clients must be 2 or 3"),
         ({"partition_scheme": "natural", "num_clients": 3}, "num_clients must be 2"),
-        ({"partition_scheme": "dirichlet"}, "Unknown partition_scheme"),
+        ({"partition_scheme": "by_window"}, "Unknown partition_scheme"),
+        ({"partition_scheme": "dirichlet"}, "dirichlet_alpha is required"),
+        ({"partition_scheme": "natural", "num_clients": 2, "channel_overlap": 0.0}, "IID K=3"),
+        ({"channel_overlap": 0.33}, "channel_overlap must be one of"),
         ({"num_rounds": 0}, "at least 1"),
     ],
 )

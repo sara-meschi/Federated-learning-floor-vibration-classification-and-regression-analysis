@@ -22,7 +22,6 @@ from .combined_centralized_classification import (
     _confusion_matrix,
     _run_epoch as _run_classification_epoch,
 )
-from .combined_centralized_regression import regression_metrics
 from .combined_residual_run_regression import (
     RunGroupedResidualDataset,
     _group_run_records,
@@ -40,10 +39,17 @@ from .guardrails import (
     assert_split_integrity,
     check_regression_health,
     seeding_record,
+    resolve_seeds,
     set_random_seeds,
 )
 from .models import SimpleCNN1D
 from .parameters import get_parameters, set_parameters
+from .regression_metrics import (
+    PER_SUBJECT_FILENAME,
+    point_metrics,
+    report_from_run_rows,
+    write_per_subject_csv,
+)
 
 
 _CLIENT_ARTIFACT_CACHE: dict[str, dict[str, object]] = {}
@@ -70,6 +76,11 @@ FEDADAM_HYPERPARAMETERS = {"eta": 1e-2, "beta_1": 0.9, "beta_2": 0.99, "tau": 1e
 
 def _apply_overrides(raw: dict[str, Any], overrides: dict[str, Any]) -> None:
     """Set dotted keys (``federated.local_epochs``) on the raw YAML before validation."""
+    if ({"split_seed", "init_seed"} & set(overrides)) and "seed" in raw:
+        # Overriding one seed of a legacy single-seed config: split it into the two
+        # explicit keys first, so the other seed keeps its configured value.
+        legacy = raw.pop("seed")
+        raw["split_seed"] = raw["init_seed"] = legacy
     for dotted, value in overrides.items():
         node = raw
         *parents, leaf = dotted.split(".")
@@ -78,6 +89,18 @@ def _apply_overrides(raw: dict[str, Any], overrides: dict[str, Any]) -> None:
                 raise KeyError(f"Override {dotted!r}: {key!r} is not a config section.")
             node = node[key]
         node[leaf] = value
+
+
+def condition_label(config: dict[str, Any]) -> str:
+    """Experiment-condition name: K, scheme, and the heterogeneity parameter if any."""
+    label = f"{config['num_clients']}client_{config['partition_scheme']}"
+    if config.get("dirichlet_alpha") is not None:
+        label += f"_alpha{config['dirichlet_alpha']:g}"
+    if config.get("channel_overlap") is not None:
+        label += f"_rho{config['channel_overlap']:g}"
+    if config.get("run_mode", "federated") == "local_only":
+        label += f"_local_only_{config['local_only_client']}"
+    return label
 
 
 def _resolve(project_root: Path, value: str | Path) -> Path:
@@ -131,6 +154,17 @@ def load_combined_iid_flower_config(
         )
     if partition_scheme == "natural" and num_clients != 2:
         raise ValueError("The natural partition is one client per campaign: num_clients must be 2.")
+    dirichlet_alpha = federated.get("dirichlet_alpha")
+    if (partition_scheme == "dirichlet") != (dirichlet_alpha is not None):
+        raise ValueError("dirichlet_alpha is required for, and only for, partition_scheme: dirichlet.")
+    channel_overlap = federated.get("channel_overlap")
+    if channel_overlap is not None:
+        from .channel_availability import CHANNEL_OVERLAPS
+
+        if partition_scheme != "iid" or num_clients != 3:
+            raise ValueError("channel_overlap applies to the IID K=3 partition only.")
+        if not any(abs(float(channel_overlap) - rho) < 1e-9 for rho in CHANNEL_OVERLAPS):
+            raise ValueError(f"channel_overlap must be one of {CHANNEL_OVERLAPS}, got {channel_overlap}.")
     if int(federated["num_rounds"]) < 1 or int(federated["local_epochs"]) < 1:
         raise ValueError("num_rounds and local_epochs must both be at least 1.")
     if float(federated["fraction_fit"]) != 1.0:
@@ -159,7 +193,7 @@ def load_combined_iid_flower_config(
     return {
         "config_path": config_path,
         "project_root": project_root,
-        "seed": int(raw["seed"]),
+        **resolve_seeds(raw),
         "classification_artifact": _resolve(project_root, raw["classification_artifact"]),
         "regression_artifact": _resolve(project_root, raw["regression_artifact"]),
         "centralized_classification_dir": _resolve(
@@ -174,6 +208,8 @@ def load_combined_iid_flower_config(
         "output_dir": _resolve(project_root, raw["output_dir"]),
         "num_clients": num_clients,
         "partition_scheme": partition_scheme,
+        "dirichlet_alpha": None if dirichlet_alpha is None else float(dirichlet_alpha),
+        "channel_overlap": None if channel_overlap is None else float(channel_overlap),
         "num_rounds": int(federated["num_rounds"]),
         "local_epochs": int(federated["local_epochs"]),
         "aggregation": aggregation,
@@ -295,6 +331,40 @@ def _centralized_step_budget(
     }
 
 
+def _client_runtime(config: dict[str, Any], optimizer_state_dir: Path) -> dict[str, Any]:
+    """The per-client training settings, shared by federated and local-only runs."""
+    return {
+        "init_seed": config["init_seed"],
+        "torch_threads": max(1, int(config["client_num_cpus"])),
+        "classification_batch_size": config["classification_batch_size"],
+        "regression_run_batch_size": config["regression_run_batch_size"],
+        "local_epochs": config["local_epochs"],
+        "weight_decay": config["weight_decay"],
+        "minimum_learning_rate": config["minimum_learning_rate"],
+        "lr_schedule": config["lr_schedule"],
+        "client_optimizer_state": config["client_optimizer_state"],
+        "optimizer_state_dir": str(optimizer_state_dir),
+    }
+
+
+def _framework_label(config: dict[str, Any]) -> str:
+    return "Flower" if config.get("run_mode", "federated") == "federated" else (
+        "none: local-only, each client trains alone, no aggregation"
+    )
+
+
+def _assert_parameter_shapes(model: nn.Module, parameters: Sequence[np.ndarray], client_id: str) -> None:
+    """Every client's model has the global model's parameter shapes (§1.3).
+
+    Channel availability is a mask on a 9-channel input, never a slice, precisely so
+    this holds and FedAvg can average the first conv layer across clients.
+    """
+    expected = [tuple(value.shape) for value in get_parameters(model)]
+    received = [tuple(np.asarray(value).shape) for value in parameters]
+    if expected != received:
+        raise AssertionError(f"{client_id} parameter shapes {received} differ from the model's {expected}.")
+
+
 def _client_optimizer_state_path(state_dir: str | Path, client_id: str) -> Path:
     return Path(state_dir) / f"{client_id}.pt"
 
@@ -363,12 +433,6 @@ def _write_rows(path: Path, rows: Sequence[dict[str, Any]]) -> None:
         writer.writerows(rows)
 
 
-def _extended_regression_metrics(actual: np.ndarray, predicted: np.ndarray) -> dict[str, float]:
-    metrics = regression_metrics(actual, predicted)
-    metrics["median_absolute_error_mps"] = float(
-        np.median(np.abs(np.asarray(predicted) - np.asarray(actual)))
-    )
-    return metrics
 
 
 def _sample_rate_audit(
@@ -574,12 +638,13 @@ def aggregate_confusion_matrices(
 class FlowerClassificationClient:
     """Factory-compatible implementation mixed with Flower NumPyClient at runtime."""
 
-    def __init__(self, artifact_path: str | Path, client_id: str, indices: Sequence[int], run_uids: Sequence[str], experiment: dict[str, Any]) -> None:
+    def __init__(self, artifact_path: str | Path, client_id: str, indices: Sequence[int], run_uids: Sequence[str], experiment: dict[str, Any], channel_mask: Sequence[bool] | None = None) -> None:
         self.artifact_path = str(artifact_path)
         self.client_id = str(client_id)
         self.indices = tuple(int(index) for index in indices)
         self.run_uids = tuple(str(uid) for uid in run_uids)
         self.experiment = experiment
+        self.channel_mask = None if channel_mask is None else tuple(bool(v) for v in channel_mask)
 
     def get_parameters(self, config: dict[str, Any]) -> list[np.ndarray]:
         artifact = _load_artifact_cached(self.artifact_path)
@@ -588,15 +653,16 @@ class FlowerClassificationClient:
     def fit(self, parameters: list[np.ndarray], config: dict[str, Any]) -> tuple[list[np.ndarray], int, dict[str, float | str]]:
         artifact = _load_artifact_cached(self.artifact_path)
         server_round = int(config["server_round"])
-        seed = _client_seed(int(self.experiment["seed"]), self.client_id, server_round)
+        seed = _client_seed(int(self.experiment["init_seed"]), self.client_id, server_round)
         set_random_seeds(seed)
         torch.set_num_threads(max(1, int(self.experiment["torch_threads"])))
         model = _build_classification_model(artifact)
+        _assert_parameter_shapes(model, parameters, self.client_id)
         set_parameters(model, parameters)
         device = torch.device("cpu")
         model.to(device)
         generator = torch.Generator().manual_seed(seed)
-        dataset = CombinedArtifactDataset(artifact, self.indices)
+        dataset = CombinedArtifactDataset(artifact, self.indices, self.channel_mask)
         batch_size = int(self.experiment["classification_batch_size"])
         train_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=0, generator=generator)
         # Unshuffled and separate, so measuring the start/end loss draws nothing from the
@@ -650,7 +716,8 @@ class FlowerClassificationClient:
 class FlowerResidualClient:
     """Run-balanced residual-regression client; Flower weights it by unique runs."""
 
-    def __init__(self, artifact_path: str | Path, client_id: str, indices: Sequence[int], run_uids: Sequence[str], source_subject_means: dict[tuple[str, str], float], residual_scale_mps: float, experiment: dict[str, Any]) -> None:
+    def __init__(self, artifact_path: str | Path, client_id: str, indices: Sequence[int], run_uids: Sequence[str], source_subject_means: dict[tuple[str, str], float], residual_scale_mps: float, experiment: dict[str, Any], channel_mask: Sequence[bool] | None = None) -> None:
+        self.channel_mask = None if channel_mask is None else tuple(bool(v) for v in channel_mask)
         self.artifact_path = str(artifact_path)
         self.client_id = str(client_id)
         self.indices = tuple(int(index) for index in indices)
@@ -665,10 +732,10 @@ class FlowerResidualClient:
     def fit(self, parameters: list[np.ndarray], config: dict[str, Any]) -> tuple[list[np.ndarray], int, dict[str, float | str]]:
         artifact = _load_artifact_cached(self.artifact_path)
         server_round = int(config["server_round"])
-        seed = _client_seed(int(self.experiment["seed"]), self.client_id, server_round)
+        seed = _client_seed(int(self.experiment["init_seed"]), self.client_id, server_round)
         set_random_seeds(seed)
         torch.set_num_threads(max(1, int(self.experiment["torch_threads"])))
-        dataset = RunGroupedResidualDataset(artifact, self.indices, self.source_subject_means, self.residual_scale_mps)
+        dataset = RunGroupedResidualDataset(artifact, self.indices, self.source_subject_means, self.residual_scale_mps, self.channel_mask)
         dataset_uids = [str(run["run_uid"]) for run in dataset.runs]
         if set(dataset_uids) != set(self.run_uids) or len(dataset_uids) != len(self.run_uids):
             raise AssertionError(f"{self.client_id} regression dataset does not match run ownership.")
@@ -679,6 +746,7 @@ class FlowerResidualClient:
         # training generator and leaves the training batch order unchanged.
         measure_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=0, collate_fn=collate_whole_runs)
         model = build_zero_initialized_residual_model()
+        _assert_parameter_shapes(model, parameters, self.client_id)
         set_parameters(model, parameters)
         device = torch.device("cpu")
         model.to(device)
@@ -704,7 +772,7 @@ class FlowerResidualClient:
                 raise AssertionError(f"{self.client_id} did not see every owned run exactly once in local epoch {local_epoch}.")
         end_loss = float(_run_group_epoch(model, measure_loader, criterion, device, None)["loss"])
         _save_client_optimizer(optimizer, self.experiment, self.client_id)
-        metrics = _extended_regression_metrics(result["run_actual"], result["run_predicted"])
+        metrics = point_metrics(result["run_actual"], result["run_predicted"])
         arrays = get_parameters(model)
         if not all(np.isfinite(value).all() for value in arrays):
             raise FloatingPointError(f"{self.client_id} returned non-finite parameters.")
@@ -767,7 +835,7 @@ def _classification_history_row(round_number: int, result: dict[str, Any]) -> di
 
 
 def _regression_history_row(round_number: int, result: dict[str, Any], residual_scale_mps: float) -> dict[str, Any]:
-    metrics = _extended_regression_metrics(result["run_actual"], result["run_predicted"])
+    metrics = point_metrics(result["run_actual"], result["run_predicted"])
     physical_from_standardized = float(result["loss"]) * residual_scale_mps**2
     if not math.isclose(physical_from_standardized, metrics["mse"], rel_tol=3e-5, abs_tol=1e-9):
         raise AssertionError(f"Standardized and physical run MSE disagree: {physical_from_standardized} != {metrics['mse']}.")
@@ -788,7 +856,7 @@ def _metrics_by_field(rows: Sequence[dict[str, Any]], field: str) -> dict[str, d
     for row in rows:
         grouped[str(row[field])].append(row)
     return {
-        key: _extended_regression_metrics(
+        key: point_metrics(
             np.asarray([float(row["actual_speed_mps"]) for row in values]),
             np.asarray([float(row["predicted_speed_mps"]) for row in values]),
         )
@@ -930,6 +998,13 @@ def audit_combined_iid_flower_setup(
             split_audit["num_test_windows"],
         ):
             raise AssertionError(f"{task} artifact summary disagrees with its split indices.")
+        # The split is baked into the artifact; the config's split seed must be the one
+        # that produced it, or partitions and split would silently disagree (R6).
+        if int(summary["split_seed"]) != int(config["split_seed"]):
+            raise AssertionError(
+                f"{task} artifact was split with seed {summary['split_seed']}, "
+                f"config says split_seed={config['split_seed']}."
+            )
         subject_ids = {str(item["subject_id"]) for item in artifact["metadata"]}
         if subject_ids != {"001", "002", "003", "004", "005", "007", "008"}:
             raise AssertionError(f"Unexpected {task} subject set: {sorted(subject_ids)}")
@@ -939,7 +1014,9 @@ def audit_combined_iid_flower_setup(
         regression,
         scheme=config["partition_scheme"],
         num_clients=config["num_clients"],
-        seed=config["seed"],
+        seed=config["split_seed"],
+        dirichlet_alpha=config["dirichlet_alpha"],
+        channel_overlap=config["channel_overlap"],
     )
     classification_normalization = _normalization_sufficient_statistics_audit(
         classification, [partition.classification_indices for partition in partitions]
@@ -1038,7 +1115,7 @@ def _run_flower_core(
         shutil.rmtree(optimizer_state_dir)
     if config["client_optimizer_state"] == "persistent":
         optimizer_state_dir.mkdir(parents=True)
-    seeding = set_random_seeds(config["seed"])
+    seeding = set_random_seeds(config["init_seed"])
     assert_determinism_flags()
     torch.set_num_threads(max(1, int(config["client_num_cpus"])))
 
@@ -1167,18 +1244,7 @@ def _run_flower_core(
         )
         return loss, returned_metrics
 
-    runtime = {
-        "seed": config["seed"],
-        "torch_threads": max(1, int(config["client_num_cpus"])),
-        "classification_batch_size": config["classification_batch_size"],
-        "regression_run_batch_size": config["regression_run_batch_size"],
-        "local_epochs": config["local_epochs"],
-        "weight_decay": config["weight_decay"],
-        "minimum_learning_rate": config["minimum_learning_rate"],
-        "lr_schedule": config["lr_schedule"],
-        "client_optimizer_state": config["client_optimizer_state"],
-        "optimizer_state_dir": str(optimizer_state_dir),
-    }
+    runtime = _client_runtime(config, optimizer_state_dir)
     partitions_by_id = {partition.client_id: partition for partition in partitions}
     if task == "classification":
         step_budget = gradient_step_budget(
@@ -1202,6 +1268,7 @@ def _run_flower_core(
                 partition.classification_indices,
                 partition.run_uids,
                 runtime,
+                partition.channel_mask,
             )
         else:
             implementation = FlowerResidualClient(
@@ -1212,6 +1279,7 @@ def _run_flower_core(
                 source_subject_means,
                 residual_scale_mps,
                 runtime,
+                partition.channel_mask,
             )
         return _as_flower_numpy_client(implementation)
 
@@ -1383,7 +1451,7 @@ def _run_flower_core(
     set_parameters(final_model, final_arrays)
     core_audit = {
         "seeding": seeding,
-        "framework": "Flower",
+        "framework": _framework_label(config),
         "flower_strategy": config["aggregation"],
         "server_optimizer_hyperparameters": config["server_optimizer"],
         "num_rounds": num_rounds,
@@ -1408,7 +1476,7 @@ def _run_flower_core(
             else "Adam state persisted per client across rounds; model parameters "
             "replaced by the global model and LR reset from the schedule each round"
         ),
-        "client_shuffle_seed": "4601 + 1000*server_round + integer_client_id",
+        "client_shuffle_seed": f"{config['init_seed']} + 1000*server_round + integer_client_id",
         "learning_rate_schedule": {
             "cosine_over_rounds": "round-wise cosine annealing; t=round-1",
             "constant": "initial learning rate throughout",
@@ -1457,7 +1525,7 @@ def _finalize_classification(
         {
             "model_state_dict": model.state_dict(),
             "architecture": "SimpleCNN1D(9 input channels, 8 class logits)",
-            "framework": "Flower",
+            "framework": _framework_label(config),
             "strategy": config["aggregation"],
             "class_to_index": artifact["class_to_index"],
             "selected_channels_one_based": artifact["summary"][
@@ -1465,7 +1533,8 @@ def _finalize_classification(
             ],
             "channel_mean": artifact["channel_mean"],
             "channel_std": artifact["channel_std"],
-            "seed": config["seed"],
+            "split_seed": config["split_seed"],
+            "init_seed": config["init_seed"],
             "rounds": num_rounds,
         },
         model_path,
@@ -1527,11 +1596,11 @@ def _finalize_classification(
     central_summary = json.loads(central_summary_path.read_text())
     summary: dict[str, Any] = {
         "experiment": (
-            f"combined_{config['num_clients']}client_{config['partition_scheme']}"
+            f"combined_{condition_label(config)}"
             "_flower_classification"
         ),
         "seeding": core_audit["seeding"],
-        "framework": "Flower",
+        "framework": _framework_label(config),
         "strategy": config["aggregation"],
         "architecture": "SimpleCNN1D with GroupNorm; 9 inputs and 8 outputs",
         "rounds": num_rounds,
@@ -1650,7 +1719,7 @@ def _finalize_regression(
         {
             "model_state_dict": model.state_dict(),
             "architecture": "SimpleCNN1D(9 input channels, 1 standardized residual output)",
-            "framework": "Flower",
+            "framework": _framework_label(config),
             "strategy": f"{config['aggregation']} weighted by unique client runs",
             "selected_channels_one_based": artifact["summary"][
                 "selected_channels_one_based"
@@ -1659,7 +1728,8 @@ def _finalize_regression(
             "channel_std": artifact["channel_std"],
             "source_subject_train_means": means_rows,
             "train_residual_scale_mps": residual_scale_mps,
-            "seed": config["seed"],
+            "split_seed": config["split_seed"],
+            "init_seed": config["init_seed"],
             "rounds": num_rounds,
         },
         model_path,
@@ -1742,30 +1812,37 @@ def _finalize_regression(
         )
     _write_rows(run_predictions_path, run_rows)
     _write_rows(window_predictions_path, window_rows)
-    run_metrics = _extended_regression_metrics(
+    run_metrics = point_metrics(
         np.asarray([row["actual_speed_mps"] for row in run_rows]),
         np.asarray([row["predicted_speed_mps"] for row in run_rows]),
     )
-    window_metrics = _extended_regression_metrics(
+    window_metrics = point_metrics(
         np.asarray([row["actual_speed_mps"] for row in window_rows]),
         np.asarray([row["predicted_speed_mps"] for row in window_rows]),
     )
-    baseline_metrics = _extended_regression_metrics(
+    baseline_metrics = point_metrics(
         np.asarray([row["actual_speed_mps"] for row in run_rows]),
         np.asarray([row["source_subject_train_mean_mps"] for row in run_rows]),
     )
+    # R2: skill against the lookup, overall and per source with run-level bootstrap CIs,
+    # and the per-subject x source breakdown. Computed before the detector so a failure
+    # record carries it too.
+    regression_evaluation = report_from_run_rows(run_rows, "source_subject_train_mean_mps")
+    per_subject_path = output_dir / PER_SUBJECT_FILENAME
+    write_per_subject_csv(per_subject_path, regression_evaluation)
     # The degenerate-model detector, run before the summary is written so a collapsed
-    # run cannot be reported as a near-match to centralized (R1). Both gates are enforced
-    # on the residual path: this is where the collapse happened.
+    # run cannot be reported as a near-match to centralized (R1). S4/S5 policy:
+    # degeneracy and "trained" are enforced; skill is reported, not enforced, because
+    # enforcing it across seeds would drop negative-skill seeds and bias the mean.
     try:
         health = check_regression_health(
             actual=[row["actual_speed_mps"] for row in run_rows],
             predicted=[row["predicted_speed_mps"] for row in run_rows],
             baseline=[row["source_subject_train_mean_mps"] for row in run_rows],
             final_standardized_mse=float(final_history["global_train_standardized_mse"]),
-            enforced_gates=("degeneracy", "skill"),
+            enforced_gates=("degeneracy", "trained"),
             run_label=(
-                f"combined_{config['num_clients']}client_{config['partition_scheme']}"
+                f"combined_{condition_label(config)}"
                 "_flower_residual_run_regression"
             ),
             # Gate degeneracy on the window-level residual, which is what the network emits.
@@ -1784,6 +1861,7 @@ def _finalize_regression(
                     "status": "FAILED: enforced detector gate(s); not a valid result",
                     "message": str(error),
                     "degenerate_model_check": error.report,
+                    "regression_report": regression_evaluation,
                     "final_global_train_metrics": {
                         key.removeprefix("global_train_"): value
                         for key, value in final_history.items()
@@ -1813,11 +1891,11 @@ def _finalize_regression(
     central_metrics = central_summary["test_run_metrics"]
     summary: dict[str, Any] = {
         "experiment": (
-            f"combined_{config['num_clients']}client_{config['partition_scheme']}"
+            f"combined_{condition_label(config)}"
             "_flower_residual_run_regression"
         ),
         "seeding": core_audit["seeding"],
-        "framework": "Flower",
+        "framework": _framework_label(config),
         "strategy": f"{config['aggregation']} weighted by unique complete training runs",
         "architecture": "Unchanged SimpleCNN1D with one standardized residual output",
         "rounds": num_rounds,
@@ -1847,6 +1925,8 @@ def _finalize_regression(
             if key.startswith("global_train_")
         },
         "degenerate_model_check": health,
+        "regression_report": regression_evaluation,
+        "test_per_subject_breakdown_path": str(per_subject_path),
         "test_run_metrics": run_metrics,
         "test_window_metrics": window_metrics,
         "test_source_subject_mean_baseline_run_metrics": baseline_metrics,
@@ -2078,3 +2158,255 @@ def run_combined_iid_flower_experiment(
         test_guard=test_guard,
         allow_degenerate=allow_degenerate,
     )
+
+
+def _local_only_global_train_row(
+    task: str,
+    model: nn.Module,
+    loader: DataLoader,
+    class_names: Sequence[str] | None,
+    residual_scale_mps: float | None,
+    server_round: int,
+    learning_rate: float,
+) -> dict[str, Any]:
+    """The same global-train monitoring row the federated server writes, for one model."""
+    if task == "classification":
+        metrics, _, _ = _evaluate_classification(model, loader, class_names)
+        row = _classification_history_row(server_round, metrics)
+    else:
+        result = _run_group_epoch(model, loader, nn.MSELoss(), torch.device("cpu"), optimizer=None)
+        row = _regression_history_row(server_round, result, residual_scale_mps)
+    row["learning_rate"] = learning_rate
+    return row
+
+
+def run_local_only_experiment(
+    config: dict[str, Any],
+    task: str,
+    *,
+    num_rounds_override: int | None = None,
+    output_root: str | Path | None = None,
+    allow_degenerate: bool = False,
+) -> dict[str, Any]:
+    """R5: every client trains alone on its own partition; no aggregation.
+
+    The paper's central claim is that FL helps clients that cannot pool data, so the
+    comparison that establishes it is FL against each client training alone. To make
+    the budget identical **by construction**, this reuses the Flower client classes
+    unchanged: the same 60 rounds x E local epochs, the same per-round learning rate,
+    client seeds, persistent-optimizer behaviour and channel mask. The only difference
+    is that each round the client receives its own parameters back instead of the
+    aggregate.
+
+    Every client is evaluated on the shared global held-out test set (all 9 channels).
+    Regression residual targets and the evaluation lookup use the same global train
+    source/subject means as the federated and centralized runs, so all three are scored
+    against one baseline. That gives a local-only client the means of subjects it never
+    trained on, which favours the local-only lower bound.
+    """
+    if task not in {"classification", "regression"}:
+        raise ValueError("task must be 'classification' or 'regression'.")
+    num_rounds = config["num_rounds"] if num_rounds_override is None else int(num_rounds_override)
+    if num_rounds <= 0:
+        raise ValueError("The number of rounds must be positive.")
+    if num_rounds_override is not None and output_root is None:
+        raise ValueError("An output_root is required when overriding rounds.")
+
+    prepared = prepare_combined_iid_flower_experiment(config, output_root)
+    partitions = prepared["partitions"]
+    artifact = prepared[f"{task}_artifact"]
+    artifact_path = config[f"{task}_artifact"]
+    task_root = prepared["output_root"] / "local_only" / task
+    means: dict[tuple[str, str], float] | None = None
+    scale: float | None = None
+    class_names = artifact["index_to_class"] if task == "classification" else None
+    if task == "regression":
+        means, scale, _ = _federated_residual_baseline(artifact, partitions)
+        global_loader = DataLoader(
+            RunGroupedResidualDataset(artifact, artifact["train_indices"].tolist(), means, scale),
+            batch_size=config["regression_run_batch_size"], shuffle=False, num_workers=0,
+            collate_fn=collate_whole_runs,
+        )
+    else:
+        global_loader = DataLoader(
+            CombinedArtifactDataset(artifact, artifact["train_indices"].tolist()),
+            batch_size=config["classification_batch_size"], shuffle=False, num_workers=0,
+        )
+
+    per_client: dict[str, Any] = {}
+    failures: dict[str, str] = {}
+    for partition in partitions:
+        client_id = partition.client_id
+        client_dir = task_root / client_id
+        client_dir.mkdir(parents=True, exist_ok=True)
+        state_dir = client_dir / "client_optimizer_state"
+        if state_dir.exists():
+            shutil.rmtree(state_dir)
+        if config["client_optimizer_state"] == "persistent":
+            state_dir.mkdir(parents=True)
+        seeding = set_random_seeds(config["init_seed"])
+        assert_determinism_flags()
+        torch.set_num_threads(max(1, int(config["client_num_cpus"])))
+        runtime = _client_runtime(config, state_dir)
+        if task == "classification":
+            initial_model = _build_classification_model(artifact)
+            implementation = FlowerClassificationClient(
+                artifact_path, client_id, partition.classification_indices,
+                partition.run_uids, runtime, partition.channel_mask,
+            )
+            units = len(partition.classification_indices)
+            batch_size = config["classification_batch_size"]
+        else:
+            initial_model = build_zero_initialized_residual_model()
+            implementation = FlowerResidualClient(
+                artifact_path, client_id, partition.regression_indices,
+                partition.run_uids, means, scale, runtime, partition.channel_mask,
+            )
+            units = len(partition.run_uids)
+            batch_size = config["regression_run_batch_size"]
+
+        parameters = [array.copy() for array in get_parameters(initial_model)]
+        test_guard = TestSetAccessGuard(artifact, label=f"{task} local-only {client_id}")
+        test_guard.seal()
+        global_rows = [
+            _local_only_global_train_row(
+                task, initial_model, global_loader, class_names, scale, 0,
+                config["initial_learning_rate"],
+            )
+        ]
+        client_rows: list[dict[str, Any]] = []
+        for server_round in range(1, num_rounds + 1):
+            learning_rate = round_learning_rate(
+                config["lr_schedule"], server_round, config["initial_learning_rate"],
+                config["minimum_learning_rate"], num_rounds,
+            )
+            parameters, num_examples, metrics = implementation.fit(
+                parameters, {"server_round": server_round, "learning_rate": learning_rate}
+            )
+            client_rows.append(
+                {"round": server_round, "client_id": client_id, "num_examples": num_examples,
+                 **{key: value for key, value in metrics.items() if key != "client_id"}}
+            )
+            if server_round in {1, num_rounds} or server_round % 10 == 0:
+                print(f"{task.capitalize()} local-only {client_id} round {server_round:03d}/{num_rounds}", flush=True)
+        _write_rows(client_dir / "local_client_fit_history.csv", client_rows)
+        final_model = (
+            _build_classification_model(artifact)
+            if task == "classification"
+            else build_zero_initialized_residual_model()
+        )
+        set_parameters(final_model, parameters)
+        global_rows.append(
+            _local_only_global_train_row(
+                task, final_model, global_loader, class_names, scale, num_rounds,
+                round_learning_rate(
+                    config["lr_schedule"], num_rounds, config["initial_learning_rate"],
+                    config["minimum_learning_rate"], num_rounds,
+                ),
+            )
+        )
+        _write_rows(client_dir / "global_train_history.csv", global_rows)
+        test_guard.assert_untouched_during_training()
+        test_guard.unseal()
+
+        budget = gradient_step_budget({client_id: units}, batch_size, config["local_epochs"], num_rounds)
+        measured = int(sum(float(row["local_steps"]) for row in client_rows))
+        if measured != budget["total_gradient_steps"]:
+            raise AssertionError(f"{client_id} took {measured} steps; budget says {budget['total_gradient_steps']}.")
+        core_audit = {
+            "seeding": seeding,
+            "run_mode": "local_only",
+            "client_id": client_id,
+            "num_rounds": num_rounds,
+            "local_epochs_per_round": config["local_epochs"],
+            "client_optimizer_state": config["client_optimizer_state"],
+            "lr_schedule": config["lr_schedule"],
+            "channel_mask": None if partition.channel_mask is None else list(partition.channel_mask),
+            "positions": None if partition.positions is None else list(partition.positions),
+            "fedavg_num_examples_by_client": {client_id: units},
+            "gradient_step_budget": {**budget, "measured_total_gradient_steps": measured},
+            "test_evaluations_during_training": len(test_guard.accesses_while_sealed),
+            "global_train_evaluation_rounds": [0, num_rounds],
+            "aggregation": "none: the client's own parameters are fed back each round",
+        }
+        local_config = {
+            **config,
+            "run_mode": "local_only",
+            "local_only_client": client_id,
+            "aggregation": "none (local-only)",
+        }
+        try:
+            if task == "classification":
+                summary = _finalize_classification(
+                    final_model, artifact, global_rows, client_rows, core_audit,
+                    local_config, client_dir, num_rounds, test_guard=test_guard,
+                )
+                per_client[client_id] = {
+                    "status": "completed",
+                    "num_training_units": units,
+                    "test_metrics": summary["test_metrics"],
+                    "summary_path": str(client_dir / "training_summary.json"),
+                }
+            else:
+                summary = _finalize_regression(
+                    final_model, artifact, global_rows, client_rows, core_audit, means, scale,
+                    local_config, client_dir, num_rounds, test_guard=test_guard,
+                    allow_degenerate=allow_degenerate,
+                )
+                overall = summary["regression_report"]["overall"]
+                per_client[client_id] = {
+                    "status": "completed",
+                    "num_training_units": units,
+                    "skill": overall["skill"],
+                    "skill_ci95": overall["skill_ci95"],
+                    "model_rmse_mps": overall["model_rmse_mps"],
+                    "baseline_rmse_mps": overall["baseline_rmse_mps"],
+                    "degenerate_model_check_passed": summary["degenerate_model_check"]["passed"],
+                    "summary_path": str(client_dir / "training_summary.json"),
+                }
+        except DegenerateModelError as error:
+            # Recorded per client so the other clients still run; the run as a whole
+            # still fails loudly below.
+            failures[client_id] = str(error)
+            per_client[client_id] = {"status": "failed_detector", "message": str(error)}
+
+    def mean_std(values: list[float]) -> dict[str, float | int]:
+        array = np.asarray(values, dtype=np.float64)
+        return {
+            "n": int(array.size),
+            "mean": float(array.mean()) if array.size else float("nan"),
+            "std": float(array.std(ddof=1)) if array.size > 1 else 0.0,
+        }
+
+    completed = [value for value in per_client.values() if value["status"] == "completed"]
+    if task == "classification":
+        aggregate = {
+            metric: mean_std([value["test_metrics"][metric] for value in completed])
+            for metric in ("accuracy", "balanced_accuracy", "macro_f1")
+        }
+    else:
+        aggregate = {
+            metric: mean_std([value[metric] for value in completed])
+            for metric in ("skill", "model_rmse_mps")
+        }
+    local_summary = {
+        "experiment": f"combined_{condition_label(config)}_local_only_{task}",
+        "run_mode": "local_only",
+        "task": task,
+        "split_seed": config["split_seed"],
+        "init_seed": config["init_seed"],
+        "num_rounds": num_rounds,
+        "local_epochs_per_round": config["local_epochs"],
+        "client_optimizer_state": config["client_optimizer_state"],
+        "evaluation": "each client's final model on the shared global held-out test set, all 9 channels",
+        "per_client": per_client,
+        "mean_std_over_completed_clients": aggregate,
+        "failed_clients": sorted(failures),
+    }
+    (task_root / "local_only_summary.json").write_text(json.dumps(local_summary, indent=2))
+    if failures:
+        raise DegenerateModelError(
+            f"Local-only {task}: client(s) {sorted(failures)} failed an enforced detector gate: "
+            + "; ".join(f"{cid}: {msg}" for cid, msg in sorted(failures.items()))
+        )
+    return local_summary

@@ -19,11 +19,13 @@ from scipy.signal import resample_poly
 from torch import nn
 from torch.utils.data import DataLoader, Dataset
 
+from .channel_availability import apply_channel_mask
 from .guardrails import (
     assert_channel_index_conversion,
     assert_determinism_flags,
     assert_split_integrity,
     seeding_record,
+    resolve_seeds,
     set_random_seeds,
 )
 from .models import SimpleCNN1D
@@ -60,12 +62,27 @@ class RunRecord:
 
 
 class CombinedArtifactDataset(Dataset):
-    def __init__(self, artifact: dict[str, object], indices: Sequence[int]) -> None:
+    """Windows of the 9-channel artifact, normalized with train-only statistics.
+
+    ``channel_mask`` (9 booleans, or None for all channels) zeroes unavailable channels
+    *after* normalization, so a masked channel equals the train mean. The input stays 9
+    channels wide on every client (review plan §1.3: mask, never slice).
+    """
+
+    def __init__(
+        self,
+        artifact: dict[str, object],
+        indices: Sequence[int],
+        channel_mask: Sequence[bool] | None = None,
+    ) -> None:
         self.samples = artifact["samples"]
         self.targets = artifact["classification_targets"]
         self.mean = artifact["channel_mean"].squeeze(0)
         self.std = artifact["channel_std"].squeeze(0)
         self.indices = [int(index) for index in indices]
+        self.channel_mask = (
+            None if channel_mask is None else torch.as_tensor(list(channel_mask), dtype=torch.bool)
+        )
 
     def __len__(self) -> int:
         return len(self.indices)
@@ -73,6 +90,7 @@ class CombinedArtifactDataset(Dataset):
     def __getitem__(self, item: int) -> tuple[torch.Tensor, torch.Tensor]:
         index = self.indices[item]
         sample = (self.samples[index] - self.mean) / self.std
+        sample = apply_channel_mask(sample, self.channel_mask)
         return sample.float(), self.targets[index]
 
 
@@ -128,7 +146,7 @@ def load_combined_config(path: str | Path) -> dict[str, Any]:
     return {
         "config_path": config_path,
         "project_root": project_root,
-        "seed": int(payload["seed"]),
+        **resolve_seeds(payload),
         "output_dir": _resolve_path(project_root, payload["output_dir"]),
         "artifact_name": str(payload["artifact_name"]),
         "sources": sources,
@@ -416,7 +434,7 @@ def build_combined_artifact(config: dict[str, Any]) -> dict[str, object]:
     records = discover_run_records(config)
     split_by_uid = assign_run_splits(
         records=records,
-        seed=config["seed"],
+        seed=config["split_seed"],
         test_ratio=config["test_ratio"],
     )
 
@@ -589,7 +607,7 @@ def build_combined_artifact(config: dict[str, Any]) -> dict[str, object]:
         "step_seconds": config["step_seconds"],
         "train_ratio": config["train_ratio"],
         "test_ratio": config["test_ratio"],
-        "split_seed": config["seed"],
+        "split_seed": config["split_seed"],
         "timing_assumption": config["timing_assumption"],
         "train_test_run_overlap": split_audit["train_test_run_overlap"],
     }
@@ -846,7 +864,7 @@ def _write_test_predictions(
 def train_and_evaluate(
     artifact: dict[str, object], config: dict[str, Any]
 ) -> dict[str, Any]:
-    seeding = set_random_seeds(config["seed"])
+    seeding = set_random_seeds(config["init_seed"])
     assert_determinism_flags()
     assert_split_integrity(artifact, "classification artifact (load)")
     output_dir: Path = config["output_dir"]
@@ -856,7 +874,7 @@ def train_and_evaluate(
     test_indices = artifact["test_indices"].tolist()
     train_dataset = CombinedArtifactDataset(artifact, train_indices)
     test_dataset = CombinedArtifactDataset(artifact, test_indices)
-    generator = torch.Generator().manual_seed(config["seed"])
+    generator = torch.Generator().manual_seed(config["init_seed"])
     train_loader = DataLoader(
         train_dataset,
         batch_size=config["batch_size"],
@@ -946,7 +964,8 @@ def train_and_evaluate(
             "channel_mean": artifact["channel_mean"],
             "channel_std": artifact["channel_std"],
             "sample_shape": artifact["summary"]["sample_shape"],
-            "seed": config["seed"],
+            "split_seed": config["split_seed"],
+            "init_seed": config["init_seed"],
             "epochs": config["epochs"],
         },
         model_path,

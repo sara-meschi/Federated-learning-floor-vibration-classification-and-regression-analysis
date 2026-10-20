@@ -46,6 +46,27 @@ CANONICAL_DETERMINISM_FLAGS = {
 }
 
 
+def resolve_seeds(payload: dict[str, Any]) -> dict[str, int]:
+    """Split seed and initialization seed as two keys (review plan §2 R6).
+
+    ``split_seed`` drives the train/test run split and every client partition;
+    ``init_seed`` drives model initialization, shuffling and client seeds. A legacy
+    config with a single ``seed:`` sets both, so every pre-S4 config and artifact
+    reproduces bitwise. Mixing the legacy key with either new key is ambiguous and
+    rejected.
+    """
+
+    has_legacy = "seed" in payload
+    has_new = "split_seed" in payload or "init_seed" in payload
+    if has_legacy and has_new:
+        raise ValueError("Use either seed or split_seed/init_seed, not both.")
+    if has_legacy:
+        return {"split_seed": int(payload["seed"]), "init_seed": int(payload["seed"])}
+    if "split_seed" not in payload or "init_seed" not in payload:
+        raise ValueError("Config needs both split_seed and init_seed (or the legacy seed).")
+    return {"split_seed": int(payload["split_seed"]), "init_seed": int(payload["init_seed"])}
+
+
 def set_random_seeds(seed: int) -> dict[str, Any]:
     """Seed every RNG the pipeline draws from and pin cudnn to deterministic kernels.
 
@@ -199,8 +220,9 @@ MAXIMUM_STANDARDIZED_MSE = 0.95
 MINIMUM_SKILL_SCORE = 0.0
 
 GATE_DEGENERACY = "degeneracy"
+GATE_TRAINED = "trained"
 GATE_SKILL = "skill"
-ALL_GATES = (GATE_DEGENERACY, GATE_SKILL)
+ALL_GATES = (GATE_DEGENERACY, GATE_TRAINED, GATE_SKILL)
 
 
 def skill_score(
@@ -239,7 +261,7 @@ def check_regression_health(
 ) -> dict[str, Any]:
     """Run the degenerate-model detector at the end of a regression run.
 
-    Two gates, deliberately separate, because the four diagnostics do not mean the same
+    Three gates, deliberately separate, because the diagnostics do not mean the same
     thing and thresholding them as one block would fail a model that is merely weak:
 
     ``degeneracy``
@@ -247,13 +269,20 @@ def check_regression_health(
         is not a model at all. Enforced on **every** regression path; this is the check
         that would have caught R1.
 
+    ``trained``
+        Final global-train standardized MSE < 0.95, i.e. training moved the model off the
+        trivial "predict zero residual" solution (1.0). Enforced on every residual path.
+        Standardized MSE is defined against the train residual scale and has no meaning on
+        the absolute path, so it is recorded as ``None`` there and the gate is not
+        enforced.
+
     ``skill``
-        Skill score against the source/subject-mean baseline, and final standardized MSE.
-        Enforced only where R1's acceptance criteria apply — the residual paths. The
-        absolute-speed model is a legitimately trained model with a skill score around
-        -0.75, which is a finding to report (R2), not a run to abort. Standardized MSE is
-        defined against the train residual scale and has no meaning on the absolute path
-        at all, so it is recorded as ``None`` there rather than thresholded.
+        Skill score > 0 against the source/subject-mean baseline. Until S4 this gate also
+        carried the standardized-MSE condition; together they were the S3 acceptance
+        criterion for the R1 fix (``docs/s3_winner_rule.md``). **From S4 it is reported
+        but enforced nowhere:** S5 runs several seeds, and enforcing skill would silently
+        drop the seeds whose skill is negative and bias the reported mean upward. A
+        negative skill is a result to report, not a run to abort.
 
     ``enforced_gates`` is always passed explicitly by the caller and never inferred from
     the numbers, so the exemption is a stated property of the run type rather than a soft
@@ -297,18 +326,21 @@ def check_regression_health(
             f"{model_output_name} std is {prediction_std} (need > 0)"
         )
 
+    trained_failures: list[str] = []
+    if final_standardized_mse is None:
+        if GATE_TRAINED in enforced:
+            raise ValueError("The 'trained' gate needs a final standardized MSE.")
+    elif float(final_standardized_mse) >= MAXIMUM_STANDARDIZED_MSE:
+        trained_failures.append(
+            f"final standardized MSE {float(final_standardized_mse):.6f} "
+            f"(need < {MAXIMUM_STANDARDIZED_MSE}); 1.0 means 'predict zero residual'"
+        )
+
     skill_failures: list[str] = []
     if score <= MINIMUM_SKILL_SCORE:
         skill_failures.append(
             f"skill score {score:.6f} vs the source/subject-mean baseline "
             f"(need > {MINIMUM_SKILL_SCORE}); the model is not beating the lookup table"
-        )
-    if final_standardized_mse is not None and (
-        float(final_standardized_mse) >= MAXIMUM_STANDARDIZED_MSE
-    ):
-        skill_failures.append(
-            f"final standardized MSE {float(final_standardized_mse):.6f} "
-            f"(need < {MAXIMUM_STANDARDIZED_MSE}); 1.0 means 'predict zero residual'"
         )
 
     gates = {
@@ -316,6 +348,11 @@ def check_regression_health(
             "enforced": GATE_DEGENERACY in enforced,
             "passed": not degeneracy_failures,
             "failures": degeneracy_failures,
+        },
+        GATE_TRAINED: {
+            "enforced": GATE_TRAINED in enforced,
+            "passed": not trained_failures,
+            "failures": trained_failures,
         },
         GATE_SKILL: {
             "enforced": GATE_SKILL in enforced,

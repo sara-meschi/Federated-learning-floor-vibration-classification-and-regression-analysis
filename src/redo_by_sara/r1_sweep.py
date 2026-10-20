@@ -162,6 +162,21 @@ def _final_history_row(history_path: Path) -> dict[str, str] | None:
     return rows[-1] if rows else None
 
 
+def _s3_detector_passed(detector: dict[str, Any]) -> bool:
+    """The three S3 gates (rule §2), computed from the report's numbers.
+
+    Independent of which gates a run *enforced*: S4 split the old "skill" gate into
+    "trained" + "skill" and stopped enforcing skill, so the report's ``passed`` flag no
+    longer means what the S3 rule meant by passing.
+    """
+    return (
+        bool(detector["gates"]["degeneracy"]["passed"])
+        and detector["final_standardized_mse"] is not None
+        and float(detector["final_standardized_mse"]) < 0.95
+        and float(detector["skill_score_vs_subject_mean"]) > 0.0
+    )
+
+
 def load_regression_result(
     config: SweepConfig, task_dir: Path, wall_seconds: float | None = None
 ) -> SweepResult:
@@ -184,12 +199,12 @@ def load_regression_result(
             raise AssertionError(f"{config.name} ran under --allow-degenerate; not a sweep run.")
         return SweepResult(
             **common,
-            status="passed" if detector["passed"] else "failed_detector",
+            status="passed" if _s3_detector_passed(detector) else "failed_detector",
             final_global_train_standardized_mse=float(detector["final_standardized_mse"]),
             total_gradient_steps=int(
                 summary["integrity_audit"]["gradient_step_budget"]["total_gradient_steps"]
             ),
-            detector_passed=bool(detector["passed"]),
+            detector_passed=_s3_detector_passed(detector),
             detector=detector,
             test_metrics=summary["test_run_metrics"],
         )

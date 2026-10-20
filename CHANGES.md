@@ -4,6 +4,175 @@ What changed, and every number that moved as a result. Newest first.
 
 ---
 
+## Session 4 — Metrics, seeds, local-only, channel masks, Dirichlet (2026-10-19)
+
+Branch `s4-metrics`. Covers `docs/review_response_plan.md` §2 R2, R5, R6 and §1.3, plus
+the Dirichlet label-skew axis. Three rulings amended the plan:
+
+- ρ = 0.375, not 0.33;
+- skill is enforced in no S5 condition;
+- one local-only run per partition scheme.
+
+### 1. One regression metrics implementation (R2)
+
+`src/redo_by_sara/regression_metrics.py` replaces four copies: `regression_metrics`,
+`_extended_metrics`, `_extended_regression_metrics`, and the plot module's
+`_regression_metrics`.
+
+- **`point_metrics`** keeps every existing key, plus `median_absolute_error_mps`.
+- **`regression_report`** is run-level:
+  - overall and per-source: baseline RMSE, model RMSE, ΔRMSE, R² (total), R² (within
+    subject), and **skill with a run-level bootstrap 95% CI** (10,000 resamples,
+    seed 4601, identical draws across models; per-source intervals resample within the
+    source);
+  - the **per-subject × source breakdown**: number of test runs, model RMSE, lookup
+    RMSE, and their difference.
+
+  Groups come from the IDs passed in; a test asserts that no subject or source ID
+  appears in the module.
+- **Within-subject R²** is 1 − SSE_model / Σ(r − r̄)², with r = actual − lookup. Without
+  the centering it would equal skill.
+- **Every regression output now carries it:** `training_summary.json` →
+  `regression_report`, plus `test_per_subject_breakdown.csv`. This covers centralized
+  absolute, centralized residual, federated, and local-only runs, and federated failure
+  records.
+- It reproduces the S3 analysis exactly. Centralized 60e: +0.121 [−0.288, +0.235];
+  Test_2 −0.042; 20251124 CI [−0.348, +0.295].
+
+### 2. Detector policy for S5
+
+The S3 "skill" gate is split in two: **`trained`** (final standardized MSE < 0.95) and
+**`skill`** (skill > 0). **S4/S5 policy: `degeneracy` and `trained` are enforced on
+every residual path; `skill` is reported with CIs for every run and enforced in no S5
+condition**, IID FL and centralized included.
+
+**Why:** S5 runs multiple seeds. Enforcing skill would silently drop the seeds whose
+skill is negative and bias the reported mean upward. The skill gate was the S3
+acceptance criterion for the R1 fix, and it stays recorded there.
+
+`r1_sweep` now computes the three S3 conditions from the report's numbers, so S3
+results are read as before regardless of which gates a run enforced.
+
+### 3. Split seed and initialization seed (R6)
+
+- New config keys **`split_seed`** (run split and every partition) and **`init_seed`**
+  (initialization, shuffling, client seeds), via `guardrails.resolve_seeds`.
+- A legacy single `seed:` sets both, so every existing config reproduces bitwise.
+  Mixing the legacy key with a new one is rejected.
+- `--set init_seed=4602` on a legacy config keeps `split_seed` at 4601.
+- The federated audit asserts that the config's split seed equals the one baked into
+  each artifact.
+- S5 init seeds: {4601, 4602, 4603}.
+
+### 4. Local-only mode (R5)
+
+`run_local_only_experiment`, or `--mode local_only` on the runner.
+
+- **Same per-client budget by construction:** it reuses the Flower client classes
+  unchanged, with the same rounds × E, per-round LR, client seeds, persistent optimizer
+  and channel mask. Each round the client gets its own parameters back instead of the
+  aggregate. The measured step count is asserted against the budget formula.
+- Every client is evaluated on the shared global 9-channel test set, with the full
+  regression report per client. A `local_only_summary.json` reports mean ± std over
+  clients.
+- A client that fails an enforced gate is recorded and the other clients still run;
+  the run as a whole still fails loudly.
+- **Disclosed assumption:** local-only regression uses the same global train
+  source/subject lookup as FL and centralized, so all three are scored against one
+  baseline. This gives a local-only client the means of subjects it never trained on,
+  which favours the local-only lower bound.
+
+### 5. Channel availability by masking (§1.3)
+
+`src/redo_by_sara/channel_availability.py`.
+
+- **8 positions → 9 channels**, with channels 8 and 10 kept together. The 1-indexed →
+  raw `[0..7, 9]` and → artifact `[0..8]` conversions are asserted at import.
+- **The mask is applied in both datasets' `__getitem__` after normalization**, so a
+  masked channel equals the train mean.
+- **The model stays plain 9-channel `SimpleCNN1D`.** Every client asserts that the
+  incoming parameters match its model's shapes.
+- Normalization stays global (train windows, all 9 channels). Evaluation is the global
+  9-channel test set only.
+
+Layouts at K=3, with ρ = |positions held by every client| / 8:
+
+| ρ | client_0 | client_1 | client_2 | channels per client |
+|---|---|---|---|---|
+| 1.0 (= IID K=3) | 1–8 | 1–8 | 1–8 | 9 / 9 / 9 |
+| **0.375** | {1,2,3,4,5} | {1,2,3,6,7} | {1,2,3,8} | 5 / 5 / 5 |
+| 0.0 | {1,2,3} | {4,5,6} | {7,8} | 3 / 3 / 3 |
+
+Position 8 (the only horizontal channel) is held by `client_2` in both partial layouts,
+and the audit logs it. **ρ = 0.375 replaces "0.33" everywhere:** configs, the docs (7
+occurrences in `CHANGES.md`, `docs/claude_code_sessions_v2.md` and
+`docs/review_response_plan.md`), and filenames. "3 of 8" cannot be a third. ρ = 0 is
+not special-cased.
+
+### 6. Dirichlet label skew (K=3, α = 0.1)
+
+- `partition_scheme: dirichlet` with `dirichlet_alpha`. Per subject, draw
+  p ~ Dir(α·1_K), then deal that subject's runs (seeded order, largest-remainder
+  rounding). Run-atomic, and the same assignment for both tasks.
+- **Floor:** a draw leaving any client with fewer than 2 subjects is redrawn; the number
+  of draws and `floor_applied` are recorded.
+- **On the real data at split seed 4601 the first draw is accepted (no floor needed):**
+
+  | | client_0 | client_1 | client_2 |
+  |---|---|---|---|
+  | runs | 21 | 15 | 76 |
+  | subjects | 3 | 2 | 5 |
+  | classification windows | 222 | 161 | 859 |
+  | regression windows | 179 | 131 | 656 |
+
+- IID balance and coverage are explicitly not required for this scheme.
+
+### Verification
+
+- **Bitwise gate.** Before any S4 edit, I generated a 2-round reference with the winner
+  setting (E=5, persistent), both tasks, natural K=2 and IID K=3. After S4, the same
+  commands give **byte-identical** files across both tasks: global and client
+  histories, test predictions, confusion matrix, run and window predictions, train
+  means, and partition files (11 per condition, 22 in total).
+- **Centralized bitwise gate.** The three 60-epoch centralized baselines were re-run on
+  the S4 code into scratch and compared against the committed artifacts:
+  - classification: `training_history.csv`, `test_predictions.csv` and
+    `test_confusion_matrix.csv` are identical;
+  - absolute regression: `training_history.csv`, `test_run_predictions.csv` and
+    `test_window_predictions.csv` are identical;
+  - residual: `training_history.csv`, `test_run_predictions.csv`,
+    `test_window_predictions.csv` and `train_source_subject_means.csv` are identical.
+
+  The residual run's new report gives skill +0.121 [−0.288, +0.235], the S3 value. Its
+  gates read degeneracy (enforced, passed), trained (enforced, passed), skill (not
+  enforced, passed).
+- **Bug found by that gate and fixed:** the residual pipeline wrote
+  `test_per_subject_breakdown.csv` before `output_dir` was defined and crashed after
+  training. No test exercises that pipeline end to end, so only the full re-run caught
+  it. The write now follows the directory setup.
+- 2-round smoke runs, exit 0: local-only on natural K=2, both tasks; ρ = 0 IID K=3;
+  Dirichlet α=0.1 K=3.
+- **End-to-end runner tests** (`test_end_to_end_runners.py`, `requires_data`): each
+  runner runs to completion in 1–2 epochs or rounds into a temp folder.
+  - Covered: centralized classification, absolute regression and residual regression;
+    the federated CLI; and `--mode local_only`.
+  - Each writes `training_summary.json`. Every regression path also writes
+    `test_per_subject_breakdown.csv` (8 source × subject rows) and a 28-run
+    `regression_report`.
+  - The classification and absolute configs pin 60 epochs in their loader, so those two
+    tests shorten the loaded config in memory and call the functions the runner scripts
+    call.
+- `pytest` (full suite, data present): **140 passed, 1 skipped** (cudnn, macOS), in
+  6 min 18 s. New test files: `test_regression_metrics.py`,
+  `test_channel_availability.py`, `test_s4_partitions_and_modes.py`,
+  `test_end_to_end_runners.py`. Two S2 tests that used `"dirichlet"` as their
+  example of an unknown scheme now use `"by_window"`.
+
+**No reported number moved.** Default behaviour is bitwise unchanged; summaries only
+gain keys.
+
+---
+
 ## Session 3 — R1 sweep results, escalation, and regression-skill analysis (2026-10-19)
 
 Branch `s3-r1-fix`. The sweep ran overnight on 2026-10-18/19 from commit `0819075`, under
@@ -156,7 +325,7 @@ persistent client optimizer state**) for every federated and local-only run:
 |---|---|
 | Centralized | reference |
 | K=2 | IID · natural cross-session · local-only |
-| K=3 | channel ρ = 1.0 (= IID) · ρ = 0.33 · ρ = 0 · Dirichlet α = 0.1 · local-only |
+| K=3 | channel ρ = 1.0 (= IID) · ρ = 0.375 · ρ = 0 · Dirichlet α = 0.1 · local-only |
 
 **Every regression output reports**, as in `scripts/analyze_s3_regression_skill.py`:
 overall skill and per-source skill (Test_2, 20251124), each with a run-level bootstrap
@@ -165,8 +334,18 @@ overall skill and per-source skill (Test_2, 20251124), each with a run-level boo
 it is emitted automatically.
 
 **Fallback, decided before S5 runs:** if S5 is not complete by the morning of 31 Oct
-2026, drop **regression** from the Dirichlet α=0.1 run first, then from ρ=0.33.
+2026, drop **regression** from the Dirichlet α=0.1 run first, then from ρ=0.375.
 Classification for those runs still goes ahead.
+
+**Amended 2026-10-19, before S4: the without-007 number is dropped from the standard
+regression outputs.** It is replaced by a **per-subject breakdown** for every regression
+run: for each subject × source, the number of test runs, model RMSE, lookup RMSE, and
+their difference. Overall and per-source skill with run-level bootstrap CIs are kept.
+**Why:** 007 is the only subject whose test speeds differ from its training speeds (see
+the table above). A metric that removes one named subject singles it out after the
+fact. The per-subject view shows where skill comes from, for every subject at once,
+without choosing which subject to exclude. No subject ID is hard-coded in the metrics
+code. The S3 without-007 numbers above remain as recorded.
 
 ---
 

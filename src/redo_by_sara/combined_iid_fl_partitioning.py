@@ -26,6 +26,19 @@ Two schemes, both over the K clients of a real ``num_clients`` parameter (K <= 3
     alternates by run parity; ``Test_2`` is unidirectional, S->N, and contributes a
     single direction value per subject).  See ``docs/session0_findings.md``.
 
+``dirichlet``
+    Label skew over subjects (K=3, alpha=0.1 in S5). For each subject, client shares
+    p ~ Dir(alpha * 1_K) are drawn and that subject's training runs, in a seeded order,
+    are dealt to clients by largest-remainder rounding of p * n. Runs stay atomic and
+    both tasks share the assignment. A draw that leaves any client with fewer than
+    ``min_subjects`` subjects is redrawn; the number of draws and whether the floor was
+    applied are recorded, because the paper must state it.
+
+Orthogonal to the run assignment, an IID K=3 partition can carry a **channel
+availability** layout (``channel_overlap`` = rho, see ``channel_availability``): every
+client keeps all its runs and the 9-channel input, and a per-client mask zeroes the
+channels of corridor positions it does not instrument.
+
 ``natural``
     One client per collection campaign: ``test_2`` -> ``client_0``,
     ``testing_20251124`` -> ``client_1`` (K must equal the number of sources, 2).
@@ -57,7 +70,10 @@ import numpy as np
 from .guardrails import assert_split_integrity
 
 
-PARTITION_SCHEMES = ("iid", "natural")
+PARTITION_SCHEMES = ("iid", "natural", "dirichlet")
+#: Dirichlet floor: every client must hold at least this many subjects.
+DIRICHLET_MIN_SUBJECTS = 2
+DIRICHLET_MAX_DRAWS = 10_000
 #: §1.2: with 112 training runs, K > 3 leaves ~4 optimizer steps per local epoch at
 #: batch size 4, which structurally reproduces the R1 collapse.
 MAX_CLIENTS = 3
@@ -78,6 +94,9 @@ class ClientPartition:
     run_uids: tuple[str, ...]
     classification_indices: tuple[int, ...]
     regression_indices: tuple[int, ...]
+    #: Channel availability (9 booleans) and corridor positions held, or None for all.
+    channel_mask: tuple[bool, ...] | None = None
+    positions: tuple[int, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -368,6 +387,72 @@ def _assign_natural(
     return assignment, sources
 
 
+def _largest_remainder(shares: np.ndarray, total: int) -> list[int]:
+    """Integer counts summing to ``total``, as close to ``shares * total`` as possible."""
+    exact = shares * total
+    counts = np.floor(exact).astype(int)
+    remainder = total - int(counts.sum())
+    # Largest fractional parts first; ties by client index, so the result is deterministic.
+    order = sorted(range(len(shares)), key=lambda c: (-(exact[c] - counts[c]), c))
+    for client in order[:remainder]:
+        counts[client] += 1
+    return [int(c) for c in counts]
+
+
+def _assign_dirichlet(
+    profiles: Mapping[str, _RunProfile],
+    num_clients: int,
+    seed: int,
+    alpha: float,
+    min_subjects: int = DIRICHLET_MIN_SUBJECTS,
+) -> tuple[dict[str, int], dict[str, Any]]:
+    """Run-level Dirichlet label skew over subjects, redrawn until the floor holds."""
+
+    subjects = sorted({profile.subject_id for profile in profiles.values()})
+    runs_by_subject = {
+        subject: sorted(
+            (p for p in profiles.values() if p.subject_id == subject),
+            key=lambda p: _seed_rank(seed, "dirichlet-order", p.run_uid),
+        )
+        for subject in subjects
+    }
+    rng = np.random.default_rng(seed)
+    for draw in range(1, DIRICHLET_MAX_DRAWS + 1):
+        assignment: dict[str, int] = {}
+        shares: dict[str, list[float]] = {}
+        counts: dict[str, list[int]] = {}
+        for subject in subjects:
+            p = rng.dirichlet([float(alpha)] * num_clients)
+            members = runs_by_subject[subject]
+            subject_counts = _largest_remainder(p, len(members))
+            owners = [client for client in range(num_clients) for _ in range(subject_counts[client])]
+            for profile, owner in zip(members, owners):
+                assignment[profile.run_uid] = owner
+            shares[subject] = [float(value) for value in p]
+            counts[subject] = subject_counts
+        subjects_per_client = [
+            {profiles[uid].subject_id for uid, owner in assignment.items() if owner == client}
+            for client in range(num_clients)
+        ]
+        if all(len(held) >= min_subjects for held in subjects_per_client):
+            return assignment, {
+                "alpha": float(alpha),
+                "min_subjects_per_client": int(min_subjects),
+                "draws": draw,
+                "floor_applied": draw > 1,
+                "floor_note": (
+                    f"Dirichlet draws that left a client with fewer than {min_subjects} "
+                    f"subjects were redrawn; {draw - 1} draw(s) rejected before acceptance."
+                ),
+                "subject_client_shares": shares,
+                "subject_client_run_counts": counts,
+            }
+    raise AssertionError(
+        f"No Dirichlet(alpha={alpha}) draw met the {min_subjects}-subject floor in "
+        f"{DIRICHLET_MAX_DRAWS} draws."
+    )
+
+
 def _speed_distribution(values: Sequence[float]) -> dict[str, float | int]:
     array = np.asarray(values, dtype=np.float64)
     return {
@@ -534,6 +619,22 @@ def _assert_natural_properties(
     }
 
 
+def _assert_dirichlet_properties(
+    partitions: Sequence[ClientPartition],
+    profiles: Mapping[str, _RunProfile],
+    min_subjects: int,
+) -> dict[str, Any]:
+    """Dirichlet-only property. IID balance and coverage are explicitly not required."""
+
+    for partition in partitions:
+        held = {profiles[uid].subject_id for uid in partition.run_uids}
+        if len(held) < min_subjects:
+            raise AssertionError(
+                f"{partition.client_id} holds {len(held)} subjects, below the floor of {min_subjects}."
+            )
+    return {"every_client_holds_at_least_min_subjects": True, "min_subjects": min_subjects}
+
+
 def _client_summary(
     partition: ClientPartition, profiles: Mapping[str, _RunProfile]
 ) -> dict[str, Any]:
@@ -590,8 +691,14 @@ def build_combined_partitions(
     scheme: str = "iid",
     num_clients: int = 3,
     seed: int = 4601,
+    *,
+    dirichlet_alpha: float | None = None,
+    channel_overlap: float | None = None,
 ) -> tuple[list[ClientPartition], dict[str, Any]]:
     """Build a run-atomic client partition shared by both tasks, plus its audit.
+
+    ``seed`` is the **split seed**: partitions are part of the data setup, not of
+    training, so they do not vary with the initialization seed.
 
     The returned indices refer to the original, global artifact tensors.  Local
     training code may shuffle those indices after partitioning, but must not
@@ -613,10 +720,20 @@ def build_combined_partitions(
         test_uids,
     ) = _build_run_profiles(classification_artifact, regression_artifact)
 
+    if (scheme == "dirichlet") != (dirichlet_alpha is not None):
+        raise ValueError("dirichlet_alpha is required for, and only for, the dirichlet scheme.")
+    if channel_overlap is not None and (scheme != "iid" or num_clients != 3):
+        raise ValueError("Channel-availability layouts apply to the IID K=3 partition only.")
+
     sources: list[str] = []
     block_audit: list[dict[str, Any]] = []
+    dirichlet_audit: dict[str, Any] = {}
     if scheme == "iid":
         assignment, block_audit = _assign_iid(profiles, num_clients, seed)
+    elif scheme == "dirichlet":
+        assignment, dirichlet_audit = _assign_dirichlet(
+            profiles, num_clients, seed, float(dirichlet_alpha)
+        )
     else:
         assignment, sources = _assign_natural(profiles, num_clients)
 
@@ -658,8 +775,28 @@ def build_combined_partitions(
     )
     if scheme == "iid":
         audits.update(_assert_iid_properties(partitions, profiles, block_audit))
+    elif scheme == "dirichlet":
+        audits.update(
+            _assert_dirichlet_properties(partitions, profiles, DIRICHLET_MIN_SUBJECTS)
+        )
     else:
         audits.update(_assert_natural_properties(partitions, profiles, sources))
+
+    channel_summary: dict[str, Any] | None = None
+    if channel_overlap is not None:
+        from dataclasses import replace
+
+        from .channel_availability import channel_audit
+
+        channel_summary = channel_audit(float(channel_overlap), num_clients, client_ids)
+        partitions = [
+            replace(
+                partition,
+                channel_mask=tuple(client["channel_mask"]),
+                positions=tuple(client["positions"]),
+            )
+            for partition, client in zip(partitions, channel_summary["clients"])
+        ]
 
     summary: dict[str, Any] = {
         "schema_version": 2,
@@ -693,10 +830,14 @@ def build_combined_partitions(
                 "speed_blocks": block_audit,
             }
         )
+    elif scheme == "dirichlet":
+        summary["dirichlet"] = dirichlet_audit
     else:
         summary["client_sources"] = {
             client_ids[index]: source_id for index, source_id in enumerate(sources)
         }
+    if channel_summary is not None:
+        summary["channel_availability"] = channel_summary
     return partitions, summary
 
 
@@ -731,7 +872,15 @@ def save_combined_iid_partitions(
     summary_path = destination / "combined_iid_partition_summary.json"
 
     partitions_path.write_text(
-        json.dumps([asdict(partition) for partition in partitions], indent=2)
+        # None fields (no channel mask) are omitted, so a plain partition serializes
+        # exactly as it did before channel availability existed.
+        json.dumps(
+            [
+                {key: value for key, value in asdict(partition).items() if value is not None}
+                for partition in partitions
+            ],
+            indent=2,
+        )
     )
     run_to_client = summary.get("run_to_client")
     if not isinstance(run_to_client, Mapping):

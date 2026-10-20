@@ -17,6 +17,7 @@ from redo_by_sara.combined_iid_flower import (
     load_combined_iid_flower_config,
     prepare_combined_iid_flower_experiment,
     run_combined_iid_flower_experiment,
+    run_local_only_experiment,
 )
 
 
@@ -32,6 +33,15 @@ def main() -> None:
         "--task", choices=("classification", "regression", "both"), default="both"
     )
     parser.add_argument("--verify-only", action="store_true")
+    parser.add_argument(
+        "--mode",
+        choices=("federated", "local_only"),
+        default="federated",
+        help=(
+            "local_only: every client trains alone on its own partition with the same "
+            "per-client budget, evaluated on the shared test set (review plan §2 R5)."
+        ),
+    )
     parser.add_argument(
         "--rounds",
         type=int,
@@ -96,7 +106,12 @@ def main() -> None:
     tasks = ("classification", "regression") if args.task == "both" else (args.task,)
     summaries = {}
     for task in tasks:
-        summaries[task] = run_combined_iid_flower_experiment(
+        runner = (
+            run_combined_iid_flower_experiment
+            if args.mode == "federated"
+            else run_local_only_experiment
+        )
+        summaries[task] = runner(
             config,
             task,
             num_rounds_override=args.rounds,

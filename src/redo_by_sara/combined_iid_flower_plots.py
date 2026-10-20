@@ -22,6 +22,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.lines import Line2D
 
+from .regression_metrics import point_metrics
+
 
 PathLike = str | Path
 RowsInput = Sequence[Mapping[str, Any]] | PathLike
@@ -436,22 +438,6 @@ def _prediction_rows(value: RowsInput, label: str) -> list[dict[str, Any]]:
     return rows
 
 
-def _regression_metrics(actual: np.ndarray, predicted: np.ndarray) -> dict[str, float]:
-    actual = np.asarray(actual, dtype=np.float64).reshape(-1)
-    predicted = np.asarray(predicted, dtype=np.float64).reshape(-1)
-    if actual.size == 0 or actual.shape != predicted.shape:
-        raise ValueError("Actual and predicted speeds must be nonempty and aligned.")
-    residual = predicted - actual
-    mse = float(np.mean(residual**2))
-    denominator = float(np.sum((actual - actual.mean()) ** 2))
-    return {
-        "mse": mse,
-        "rmse_mps": float(np.sqrt(mse)),
-        "r2": float(1.0 - np.sum(residual**2) / denominator)
-        if denominator > 1e-12
-        else 0.0,
-        "within_0_10_mps_pct": float(100.0 * np.mean(np.abs(residual) <= 0.10)),
-    }
 
 
 def _joined_run_predictions(
@@ -514,7 +500,7 @@ def plot_regression_actual_vs_predicted(
     rows = _prediction_rows(fl_predictions, "FL")
     actual = _series(rows, ["actual_speed_mps"], "actual speed")
     predicted = _series(rows, ["predicted_speed_mps"], "predicted speed")
-    metrics = _regression_metrics(actual, predicted)
+    metrics = point_metrics(actual, predicted)
     subjects = sorted({str(row.get("subject_id", "unknown")) for row in rows})
     sources = sorted({str(row.get("source_id", "unknown")) for row in rows})
     colors = plt.get_cmap("tab10")
@@ -683,13 +669,13 @@ def plot_regression_subject_rmse_comparison(
         rows = grouped[subject]
         actual = np.asarray([row["actual_speed_mps"] for row in rows])
         central_values.append(
-            _regression_metrics(
+            point_metrics(
                 actual,
                 np.asarray([row["centralized_predicted_speed_mps"] for row in rows]),
             )["rmse_mps"]
         )
         fl_values.append(
-            _regression_metrics(
+            point_metrics(
                 actual,
                 np.asarray([row["fl_predicted_speed_mps"] for row in rows]),
             )["rmse_mps"]

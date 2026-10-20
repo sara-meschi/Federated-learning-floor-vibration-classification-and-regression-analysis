@@ -15,18 +15,23 @@ from matplotlib.lines import Line2D
 from torch import nn
 from torch.utils.data import DataLoader, Dataset
 
-from .combined_centralized_regression import (
-    load_regression_config,
-    regression_metrics,
-)
+from .combined_centralized_regression import load_regression_config
 from .guardrails import (
     assert_determinism_flags,
     assert_split_integrity,
     check_regression_health,
     seeding_record,
+    resolve_seeds,
     set_random_seeds,
 )
+from .channel_availability import apply_channel_mask
 from .models import SimpleCNN1D
+from .regression_metrics import (
+    PER_SUBJECT_FILENAME,
+    point_metrics,
+    report_from_run_rows,
+    write_per_subject_csv,
+)
 
 
 def _resolve_path(project_root: Path, raw_path: str | Path) -> Path:
@@ -42,8 +47,11 @@ def load_residual_run_config(path: str | Path) -> dict[str, Any]:
     base_config = load_regression_config(base_config_path)
     training = payload["training"]
 
-    if int(payload["seed"]) != base_config["seed"]:
-        raise ValueError("Residual and baseline experiments must use the same seed.")
+    seeds = resolve_seeds(payload)
+    # The residual run reads the base experiment's artifact, so it must share that
+    # artifact's split. Its initialization seed is free (R6: seeds on a fixed split).
+    if seeds["split_seed"] != base_config["split_seed"]:
+        raise ValueError("Residual and baseline experiments must use the same split seed.")
     # The canonical comparison is 60 epochs, matching the absolute-speed baseline. A
     # different epoch count is allowed only when the config states why (e.g. the S3
     # matched-budget reference), and the reason is carried into the run summary.
@@ -68,7 +76,7 @@ def load_residual_run_config(path: str | Path) -> dict[str, Any]:
             project_root, payload["baseline_summary_path"]
         ),
         "output_dir": _resolve_path(project_root, payload["output_dir"]),
-        "seed": int(payload["seed"]),
+        **seeds,
         "run_batch_size": int(training["run_batch_size"]),
         "epochs": int(training["epochs"]),
         "epochs_override_reason": epochs_override_reason or None,
@@ -193,7 +201,12 @@ class RunGroupedResidualDataset(Dataset):
         indices: Sequence[int],
         source_subject_means: dict[tuple[str, str], float],
         residual_scale_mps: float,
+        channel_mask: Sequence[bool] | None = None,
     ) -> None:
+        # channel_mask: see CombinedArtifactDataset. Applied after normalization.
+        self.channel_mask = (
+            None if channel_mask is None else torch.as_tensor(list(channel_mask), dtype=torch.bool)
+        )
         self.samples: torch.Tensor = artifact["samples"]
         self.channel_mean: torch.Tensor = artifact["channel_mean"]
         self.channel_std: torch.Tensor = artifact["channel_std"]
@@ -209,6 +222,7 @@ class RunGroupedResidualDataset(Dataset):
         window_indices = torch.tensor(run["window_indices"], dtype=torch.long)
         samples = self.samples[window_indices]
         samples = (samples - self.channel_mean) / self.channel_std
+        samples = apply_channel_mask(samples, self.channel_mask)
         group_key = (run["source_id"], run["subject_id"])
         baseline = self.source_subject_means[group_key]
         actual = float(run["actual_speed_mps"])
@@ -385,13 +399,6 @@ def _write_rows(rows: Sequence[dict[str, Any]], path: Path) -> None:
         writer.writerows(rows)
 
 
-def _extended_metrics(actual: np.ndarray, predicted: np.ndarray) -> dict[str, float]:
-    metrics = regression_metrics(actual, predicted)
-    residual = np.asarray(predicted, dtype=np.float64) - np.asarray(
-        actual, dtype=np.float64
-    )
-    metrics["median_absolute_error_mps"] = float(np.median(np.abs(residual)))
-    return metrics
 
 
 def _metrics_by_field(
@@ -401,7 +408,7 @@ def _metrics_by_field(
     for row in rows:
         grouped[str(row[field])].append(row)
     return {
-        key: _extended_metrics(
+        key: point_metrics(
             np.asarray([float(row["actual_speed_mps"]) for row in group_rows]),
             np.asarray([float(row["predicted_speed_mps"]) for row in group_rows]),
         )
@@ -666,9 +673,9 @@ def train_and_evaluate_residual_run_model(
         artifact, test_indices, source_subject_means, residual_scale_mps
     )
 
-    seeding = set_random_seeds(config["seed"])
+    seeding = set_random_seeds(config["init_seed"])
     assert_determinism_flags()
-    generator = torch.Generator().manual_seed(config["seed"])
+    generator = torch.Generator().manual_seed(config["init_seed"])
     train_loader = DataLoader(
         train_dataset,
         batch_size=config["run_batch_size"],
@@ -707,7 +714,7 @@ def train_and_evaluate_residual_run_model(
     )
 
     def history_row(epoch: int, learning_rate: float, result: dict[str, Any]) -> dict[str, Any]:
-        metrics = _extended_metrics(result["run_actual"], result["run_predicted"])
+        metrics = point_metrics(result["run_actual"], result["run_predicted"])
         return {
             "epoch": epoch,
             "optimization_loss_standardized_mse": result["loss"],
@@ -760,7 +767,7 @@ def train_and_evaluate_residual_run_model(
         optimizer=None,
         collect_windows=True,
     )
-    run_metrics = _extended_metrics(
+    run_metrics = point_metrics(
         test_result["run_actual"], test_result["run_predicted"]
     )
 
@@ -823,29 +830,30 @@ def train_and_evaluate_residual_run_model(
             }
         )
     window_rows.sort(key=lambda row: int(row["artifact_index"]))
-    window_metrics = _extended_metrics(
+    window_metrics = point_metrics(
         np.asarray([row["actual_speed_mps"] for row in window_rows]),
         np.asarray([row["predicted_speed_mps"] for row in window_rows]),
     )
-    run_baseline_metrics = _extended_metrics(
+    run_baseline_metrics = point_metrics(
         np.asarray([row["actual_speed_mps"] for row in run_rows]),
         np.asarray([row["source_subject_train_mean_mps"] for row in run_rows]),
     )
-    window_baseline_metrics = _extended_metrics(
+    window_baseline_metrics = point_metrics(
         np.asarray([row["actual_speed_mps"] for row in window_rows]),
         np.asarray(
             [row["source_subject_train_mean_mps"] for row in window_rows]
         ),
     )
 
-    # Degenerate-model detector. Both gates are enforced here: this is a residual run, so
-    # R1's acceptance criteria apply in full and the standardized MSE is meaningful.
+    # Degenerate-model detector. S4/S5 policy: degeneracy and "trained" (standardized MSE
+    # < 0.95) are enforced; skill is reported but not enforced, because enforcing it across
+    # seeds would drop negative-skill seeds and bias the mean (CHANGES.md, S4).
     health = check_regression_health(
         actual=[row["actual_speed_mps"] for row in run_rows],
         predicted=[row["predicted_speed_mps"] for row in run_rows],
         baseline=[row["source_subject_train_mean_mps"] for row in run_rows],
         final_standardized_mse=float(history[-1]["optimization_loss_standardized_mse"]),
-        enforced_gates=("degeneracy", "skill"),
+        enforced_gates=("degeneracy", "trained"),
         run_label="combined_residual_run_level_run_balanced_1d_cnn",
         # See the federated path: the degeneracy gate must see the residual the network
         # emits, not the baseline-inflated speed.
@@ -853,6 +861,9 @@ def train_and_evaluate_residual_run_model(
         model_output_name="window predicted residual",
         allow_degenerate=allow_degenerate,
     )
+    # R2: skill against the lookup, overall and per source with run-level bootstrap CIs,
+    # and the per-subject x source breakdown.
+    regression_evaluation = report_from_run_rows(run_rows, "source_subject_train_mean_mps")
     health["window_level"] = {
         "num_predictions": len(window_rows),
         "distinct_predicted_residual_mps": len(
@@ -867,6 +878,8 @@ def train_and_evaluate_residual_run_model(
     existing_cnn_metrics = existing_summary["test_run_metrics"]
     output_dir: Path = config["output_dir"]
     output_dir.mkdir(parents=True, exist_ok=True)
+    per_subject_path = output_dir / PER_SUBJECT_FILENAME
+    write_per_subject_csv(per_subject_path, regression_evaluation)
     model_path = output_dir / "residual_run_balanced_1d_cnn_final.pt"
     summary_path = output_dir / "training_summary.json"
     history_path = output_dir / "training_history.csv"
@@ -891,7 +904,8 @@ def train_and_evaluate_residual_run_model(
                 "(APDM gait speed minus train source/subject run mean) divided by "
                 "the train-only residual scale"
             ),
-            "seed": config["seed"],
+            "split_seed": config["split_seed"],
+            "init_seed": config["init_seed"],
             "epochs": config["epochs"],
         },
         model_path,
@@ -920,6 +934,8 @@ def train_and_evaluate_residual_run_model(
         "device": str(device),
         "seeding": seeding,
         "degenerate_model_check": health,
+        "regression_report": regression_evaluation,
+        "test_per_subject_breakdown_path": str(per_subject_path),
         "epochs": config["epochs"],
         "epochs_override_reason": config["epochs_override_reason"],
         "run_batch_size": config["run_batch_size"],
