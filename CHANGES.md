@@ -4,6 +4,196 @@ What changed, and every number that moved as a result. Newest first.
 
 ---
 
+## Session 5 — Experiment queue, run-level metrics, source probe, 003 control (2026-10-19)
+
+Branch `s5-experiments`. This entry covers the code and configs; no paper experiment
+has been run yet, and **no reported number moved.** The queue's results get their own
+entry. The PI amended the runbook's S5 section:
+
+- **Setting for every FL and local-only run:** FedAvg, E=5, persistent client
+  optimizer, `client_num_cpus: 3`, both tasks, global 9-channel evaluation only.
+- **K=2 IID and K=2 natural** run at init seeds 4601/4602/4603 (split seed 4601 always).
+- **K=3** ρ = 1.0 (this is IID K=3, run once), 0.375 and 0, plus **Dirichlet α=0.1**, run
+  at init seed 4601.
+- **Local-only** runs once for each of the 6 partition schemes.
+- **Centralized** classification, absolute and residual are added at init seeds 4602 and
+  4603, so centralized also has 3 seeds.
+
+Gates are as in S4: degeneracy and trained are enforced, skill is reported and never
+enforced.
+
+### The queue: `scripts/run_s5_queue.py` (logic in `src/redo_by_sara/s5_queue.py`)
+
+**43 jobs: 40 training jobs and 3 reuses.** Each job is one task, so a restart and the
+fallback work per task. The order, most important first:
+
+| Group | Jobs | First estimate |
+|---|---|---|
+| 1 | FL K=2 natural and IID × 3 seeds × 2 tasks | 12 jobs, 7.7 h |
+| 2 | Local-only K=2 natural and IID × 2 tasks | 4 jobs, 4.3 h |
+| 3 | Centralized seed 4601, reused (3); centralized seeds 4602/4603 (6); source probe (1); 003 control (1) | 8 training jobs, 1.6 h |
+| 4 | FL K=3 ρ = 1.0, 0.375, 0 × 2 tasks | 6 jobs, 3.1 h |
+| 5 | FL Dirichlet α=0.1 × 2 tasks | 2 jobs, 1.8 h |
+| 6 | Local-only K=3 ρ = 1.0, 0.375, 0 and Dirichlet × 2 tasks | 8 jobs, 10.8 h |
+| | **Total** | **≈ 29.4 h** |
+
+**Where the estimates come from:**
+- **Natural K=2 FL:** measured in S3 at this exact setting: classification 42.5 min,
+  regression 33.7 min.
+- **IID K=3 regression:** measured at 28.1 min.
+- **Everything else is scaled.** Local-only is the least certain: its clients train one
+  after another, and it has never run past 2 rounds.
+- **Recalibration:** once a job of the same timing class finishes, the queue uses its
+  measured wall time instead.
+
+**Output:**
+- Everything goes under `artifacts/s5/<family>/<condition>/seed<N>/<task>/`, one folder
+  per job, each with `run.log` and `job.json`. FL and local-only jobs pass `--set
+  init_seed=N` to the runner.
+- **Logs:** `queue.log` holds commands, exit codes and timestamps. `status.log` holds one
+  line per finished job, which is also printed.
+- **Tables:** `results_index.csv` has one row per job, with the FLAT flag and the headline
+  metrics. `derived/seed_aggregates.csv` has mean ± std over seeds.
+  `derived/run_level_classification.csv` and `derived/cross_session_free_breakdown.csv`
+  hold the run-level results.
+- Per-job folders are gitignored; the index, the status log and `derived/` are tracked.
+
+**Restart:**
+- A terminal `job.json` is skipped. The terminal outcomes are `completed`,
+  `completed_with_failed_clients`, `failed_detector`, `dropped_fallback` and
+  `reused_canonical`.
+- A killed job's folder has no `job.json`. It is renamed to `*.incomplete-<timestamp>`,
+  never deleted, and re-run. A crashed job is renamed to `*.crashed-<timestamp>` and
+  re-run.
+
+**Interruption:**
+- SIGINT or SIGTERM stops the child cleanly: SIGINT to its process group, then SIGKILL
+  after 60 s.
+- Each child runs under `caffeinate -i`. That stops idle sleep but not lid-close sleep.
+
+**Preflight:**
+- refuses to start if `src/`, `scripts/` or `configs/` have uncommitted changes;
+- checks flwr 1.29.0, ray 2.51.1 and the conda env `fl`;
+- checks that the canonical inputs exist;
+- refuses a results root that is, or is inside, a canonical artifacts folder;
+- checks that every S5 FL config carries the winner setting, and builds and audits each
+  partition with all writes disabled.
+
+**`--stop-by HH:MM`:**
+- It means the next occurrence of that time: started at 21:00, `--stop-by 05:00` means
+  05:00 tomorrow.
+- Before starting a job, the queue checks whether its estimate × 1.10 would end after
+  that time. If so, it stops cleanly and prints the job it did not start, what is left,
+  and the next job in line.
+- `--dry-run --stop-by` shows which jobs fit tonight.
+
+**Fallback (S3 "S5 scope"), automatic by the clock:** from 31 Oct 2026 08:00, any
+not-yet-started Dirichlet regression jobs, then ρ = 0.375 regression jobs, are recorded as
+`dropped_fallback`. This covers FL and local-only. Classification still runs.
+
+**FLAT** is a flag; the queue keeps going. It shows in the status line and in
+`results_index.csv` when:
+- a classification run's global-train accuracy rises by less than 0.05 from round 0;
+- a classification run predicts a single test class;
+- a centralized classifier's final train accuracy is below chance + 0.05;
+- a regression run failed the `trained` gate.
+
+Degradation at ρ=0 and α=0.1 is a result, not a flag.
+
+**Seed-4601 centralized is reused, not re-run.** The committed run is scored read-only;
+S4 showed a re-run reproduces it byte for byte.
+- The committed regression summaries predate S4's `regression_report`, so it is computed
+  from the committed `test_run_predictions.csv`.
+- The residual run's `trained` gate is derived from its recorded standardized MSE
+  (0.716 < 0.95).
+- **Scored this way, the residual reproduces S3/S4 exactly:** skill +0.121
+  [−0.288, +0.235].
+
+### Configs
+
+- **FL:** `configs/s5_{k2_natural, k2_iid, k3_iid, k3_rho0.375, k3_rho0, k3_dirichlet0.1}.yaml`.
+  Each carries the winner setting and explicit `split_seed: 4601`, `init_seed: 4601`.
+  `k3_iid` has no `channel_overlap` key, so the ρ = 1.0 condition is the plain IID run.
+- **Centralized:** `configs/s5_centralized_{classification, absolute, residual}_init{4602, 4603}.yaml`.
+  Each residual config points `baseline_summary_path` at the absolute run with the same
+  seed (a comparison field only). The queue runs absolute before residual.
+- **Bug caught by a test:** every config loader resolves relative paths from
+  `config_path.parents[1]`. The configs were first written to `configs/s5/` and would have
+  read `configs/artifacts/...`. They now live in `configs/` directly. A test asserts the
+  resolved artifact paths.
+
+### Run-level classification metrics (§2 R4 item 1): `run_level_classification.py`
+
+- **Unit:** the held-out run, 28 of them, using the windows whose true class is a subject.
+  A run whose vote is won by `no_walking` counts as wrong.
+- **Majority vote:** a tie goes to the higher mean probability over the run, then to the
+  lower class index.
+- **Mean probability:** the argmax of the run's mean softmax.
+- **Reported:** accuracy with a Wilson 95% interval, macro-F1, per-source results, and a
+  subject × source breakdown. The free subject-003 look is that breakdown filtered to
+  subjects recorded in more than one source; no subject ID is hard-coded.
+- **No training code was touched.** Probabilities are recomputed from each run's saved
+  checkpoint with the normalization stored in it. Each window's argmax is **asserted to
+  equal the saved `predicted_class`**.
+- **Measured on the committed seed-4601 centralized classifier** (a new number, not a
+  moved one): 28/28 runs, Wilson [0.879, 1.000]; Test_2 13/13 [0.772, 1.000]; 20251124
+  15/15 [0.796, 1.000]. Majority vote and mean probability agree. Window accuracy is 0.9967.
+
+### Source probe (§2 R4 item 2): `source_probe.py`, `scripts/run_source_probe.py`
+
+- An in-memory copy of the classification artifact with label = source. The windows, the
+  seed-4601 split, the normalization and the centralized recipe are unchanged.
+- Reports window accuracy, split into no_walking and walking windows, and run-level
+  accuracy over all of a run's windows.
+
+### Subject-003 cross-session control (§2 R4 item 3): `subject003_control.py`, `scripts/run_subject003_control.py`
+
+This is a separate evaluation split under the CLAUDE.md carve-out: an in-memory derived
+artifact, with `assign_run_splits`, the seed-4601 split and the saved artifacts untouched.
+
+| Set | Runs | Windows | Contents |
+|---|---|---|---|
+| train | 52 | 431 | Test_2 canonical-train runs, walking windows, 3 classes (001, 002, 003) |
+| in-session test | 13 | 103 | Test_2 canonical-test runs |
+| cross-session test | 15 | 142 | **all** of 003's 20251124 runs, canonical train and test. The model never sees 20251124. |
+| negative control | 60 | 528 | 20251124 subjects 004, 005, 007, 008, evaluation only |
+
+- **Normalization is recomputed from the control's train windows only.** The canonical
+  statistics include 20251124 windows. The recipe is tested to reproduce the canonical
+  statistics bitwise when given the canonical train indices.
+- **The negative control (approved by the PI)** reports the predicted-label distribution
+  for each subject, at window level and run level, next to 003's. This shows whether a
+  cross-session "hit" is the person or the session.
+
+### Verification
+
+- **`test_s5.py`, 26 tests:**
+  - Wilson intervals against closed-form values;
+  - the vote, tie and background rules, and the macro-F1;
+  - the job matrix: 43 jobs, 40 training jobs, the group sizes, the order, absolute before
+    residual, the fallback levels, and every `--output-root` under the root;
+  - every S5 config's setting and resolved paths;
+  - the `--stop-by` next-occurrence rule and margin, the fallback clock, estimate
+    recalibration, and outcome detection.
+  - With data, they also check the control's split literals and its separate
+    normalization, the probe relabel, and run-level scoring of the canonical checkpoint.
+- **Smoke run with kill and restart** (`--smoke`, 1 round or 1 epoch, scratch root, the
+  fallback clock forced into the past):
+  - The queue was killed with SIGTERM during `fl/k2_natural/seed4601/regression`. It
+    exited 130, the child stopped in 9 s, and no Ray processes were left.
+  - The restart skipped the finished classification job, set the killed folder aside as
+    `regression.incomplete-…`, re-ran it, and completed the rest.
+  - **Ran:** local-only (both tasks), the three reused seed-4601 jobs, the probe, the
+    control, and FL ρ=0.375 and Dirichlet classification.
+  - **Dropped by the fallback:** ρ=0.375 and Dirichlet regression.
+  - **Not run in smoke:** the centralized runners, which pin 60 epochs and are covered by
+    the S4 end-to-end tests.
+  - A third start skipped every job.
+  - With `--stop-by` 30 minutes ahead, the queue ran a job estimated at 0.9 min, then
+    refused the 90-min local-only K=3 job and printed the next job in line.
+- `pytest` (full suite, data present): **166 passed, 1 skipped** (cudnn, macOS), in
+  6 min 34 s. That is the S4 140 plus the 26 new tests.
+
 ## Session 4 — Metrics, seeds, local-only, channel masks, Dirichlet (2026-10-19)
 
 Branch `s4-metrics`. Covers `docs/review_response_plan.md` §2 R2, R5, R6 and §1.3, plus

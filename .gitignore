@@ -9,3 +9,8 @@ artifacts/_r1_evidence_readonly_backup/
 artifacts/s3_r1_sweep/*
 !artifacts/s3_r1_sweep/sweep_table.md
 !artifacts/s3_r1_sweep/sweep_summary.json
+# S5 queue: per-job outputs stay local; the index, status log and derived tables are the record.
+artifacts/s5/*
+!artifacts/s5/results_index.csv
+!artifacts/s5/status.log
+!artifacts/s5/derived/
