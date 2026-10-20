@@ -363,3 +363,108 @@ def test_run_level_on_the_canonical_centralized_checkpoint(classification_artifa
     }
     assert len(summary["per_subject_source"]) == 8
     assert (tmp_path / "run_level_predictions.csv").read_text().count("\n") == 1 + 28
+
+
+# ------------------------------------------------------------------ degeneracy spread rule (2026-10-20)
+
+SEED4603 = json.loads((ROOT / "test_fixtures/s5_k2_natural_seed4603_regression.json").read_text())
+
+
+def _health_4603(**overrides: object) -> dict:
+    from redo_by_sara.guardrails import check_regression_health
+
+    arguments = dict(
+        actual=SEED4603["run_actual_speed_mps"],
+        predicted=SEED4603["run_predicted_speed_mps"],
+        baseline=SEED4603["run_baseline_mps"],
+        final_standardized_mse=SEED4603["final_standardized_mse"],
+        enforced_gates=(),
+        run_label="s5-natural-k2-seed4603",
+        model_output=SEED4603["window_predicted_residual_mps"],
+        model_output_name="window predicted residual",
+    )
+    arguments.update(overrides)
+    return check_regression_health(**arguments)
+
+
+def test_seed4603_passes_a_distinct_count_but_fails_the_spread_rule() -> None:
+    report = _health_4603()
+    # What fooled the old gate: 205 distinct values (> 10) and a std above zero.
+    assert report["distinct_predictions"] == 205
+    assert 0.0 < report["prediction_std"] < 1e-10
+    assert report["relative_output_spread"] < 1e-9
+    gate = report["gates"]["degeneracy"]
+    assert gate["passed"] is False
+    assert len(gate["failures"]) == 1 and "numerical noise" in gate["failures"][0]
+    assert report["gates"]["trained"]["passed"] is False
+
+
+def test_seed4603_raises_when_degeneracy_is_enforced_alone() -> None:
+    from redo_by_sara.guardrails import DegenerateModelError
+
+    with pytest.raises(DegenerateModelError, match="numerical noise"):
+        _health_4603(enforced_gates=("degeneracy",))
+
+
+def test_spread_rule_threshold_is_relative_to_the_target() -> None:
+    from redo_by_sara.guardrails import MINIMUM_RELATIVE_OUTPUT_SPREAD
+
+    assert MINIMUM_RELATIVE_OUTPUT_SPREAD == 1e-3
+    rng = np.random.default_rng(11)
+    baseline = rng.uniform(1.0, 1.5, size=28)
+    actual = baseline + rng.normal(0.0, 0.04, size=28)
+    target_std = float(np.std(actual - baseline))
+    noise = rng.normal(0.0, 1.0, size=238)
+    noise /= noise.std()
+
+    def degeneracy(relative: float) -> bool:
+        return _health_4603(actual=actual, predicted=actual, baseline=baseline,
+                            model_output=noise * relative * target_std)["gates"]["degeneracy"]["passed"]
+
+    assert degeneracy(2e-3) is True
+    assert degeneracy(5e-4) is False
+    # S3 E=1 persistent collapse (std 4.8e-7 m/s against a 0.039 target, ratio 1.2e-5)
+    assert degeneracy(1.2e-5) is False
+    # the weakest trained run on disk (centralized 60e residual, ratio 0.386)
+    assert degeneracy(0.386) is True
+
+
+def test_seed_reporting_rule() -> None:
+    from redo_by_sara.s5_queue import seed_reporting
+
+    natural = [{"skill": -0.207, "collapsed": False}, {"skill": -0.123, "collapsed": False},
+               {"skill": -0.000001, "collapsed": True}]
+    assert seed_reporting(natural) == "per seed; 1 of 3 seeds collapsed"
+    assert seed_reporting(natural[:2]) == "mean ± std over 2 seeds; 0 of 2 seeds collapsed"
+    assert seed_reporting([{"window_accuracy": 1.0}, {"window_accuracy": 0.99}]) == "mean ± std over 2 seeds"
+    # why: the mean of the three would sit above both trained seeds
+    assert np.mean([m["skill"] for m in natural]) > max(m["skill"] for m in natural[:2])
+
+
+def test_seed_aggregates_report_a_collapsed_group_per_seed(tmp_path: Path) -> None:
+    from redo_by_sara.s5_queue import rebuild_index
+
+    jobs = build_jobs()
+    skills = {("k2_natural", 4601): (-0.207, False), ("k2_natural", 4602): (-0.123, False),
+              ("k2_natural", 4603): (-0.000001, True), ("k2_iid", 4601): (0.089, False),
+              ("k2_iid", 4602): (0.150, False), ("k2_iid", 4603): (0.277, False)}
+    for job in jobs:
+        key = (job.condition, job.seed)
+        if job.family == "fl" and job.task == "regression" and key in skills:
+            skill, collapsed = skills[key]
+            _record(tmp_path / job.job_id, outcome="failed_detector" if collapsed else "completed",
+                    wall_seconds=60.0, smoke=False, flat=collapsed,
+                    metrics={"skill": skill, "model_rmse_mps": 0.04, "collapsed": collapsed})
+    index = {row["job_id"]: row for row in rebuild_index(jobs, tmp_path)}
+    assert index["fl/k2_natural/seed4603/regression"]["collapsed"] == "yes"
+    assert index["fl/k2_natural/seed4601/regression"]["seed_reporting"] == "per seed; 1 of 3 seeds collapsed"
+    assert index["fl/k2_iid/seed4601/regression"]["seed_reporting"] == "mean ± std over 3 seeds; 0 of 3 seeds collapsed"
+
+    import csv
+
+    rows = {r["condition"]: r for r in csv.DictReader((tmp_path / "derived/seed_aggregates.csv").open())}
+    natural, iid = rows["k2_natural"], rows["k2_iid"]
+    assert natural["reporting"] == "per seed; 1 of 3 seeds collapsed"
+    assert not natural.get("skill_mean") and float(natural["skill_seed4601"]) == -0.207
+    assert natural["collapsed_seed4603"] == "True"
+    assert float(iid["skill_mean"]) == pytest.approx((0.089 + 0.150 + 0.277) / 3)

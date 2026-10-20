@@ -4,6 +4,105 @@ What changed, and every number that moved as a result. Newest first.
 
 ---
 
+## Session 5 (amendment) — Seed-4603 collapse, per-seed reporting, degeneracy spread rule (2026-10-20)
+
+The first queue night (2026-10-19 20:56 → 2026-10-20 05:14, stopped by `--stop-by 06:00`)
+finished 13 of 43 jobs: all 12 K=2 FL jobs and local-only K=2 natural classification.
+One job collapsed. The full results get their own entry when the queue completes.
+
+### Natural K=2, init seed 4603, regression collapsed: reported as measured
+
+`fl/k2_natural/seed4603/regression` → `failed_detector`, FLAT.
+- **The numbers:**
+  - global-train standardized MSE is 1.0000000 in every one of the 60 rounds;
+  - skill −1.1e-6;
+  - 205 distinct window residuals, but their std is 5.2e-12 m/s.
+- **This is the R1 mechanism on one seed.** In every round, each client's local loss ends
+  where it started (client_0 0.5656 → 0.5656, client_1 1.3765 → 1.3765).
+- **Seed 4601 starts on the same plateau and leaves it.** By round 10 client_1 moves
+  (1.3637 → 1.2929), and by round 60 the standardized MSE is 0.119.
+- **IID K=2 seed 4603 trained normally** (skill +0.277), so the collapse is that seed
+  combined with the natural partition.
+- With 1 collapse in 3 seeds against 0 in 3, no causal claim about non-IID is supported.
+
+**PI decision:**
+- Report it as measured. The folder and its failure record are kept unchanged, and it is
+  not re-run.
+- Natural K=2 regression is reported **per seed, not as mean ± std**, with the collapse
+  counted as **"1 of 3 seeds collapsed"**.
+- **Why:** with n = 3 and a collapsed run whose skill is ≈ 0, a mean would sit above both
+  trained seeds. (−0.207, −0.123 and 0.000 average to −0.110.)
+
+**Implemented:**
+- **The rule is general:** any multi-seed group containing a collapsed seed is reported
+  this way. Today that is only natural K=2 regression.
+- **Definition:** "collapsed" means the current detector, re-applied to the saved
+  predictions, fails `degeneracy` or `trained`.
+- **`results_index.csv`** gains `collapsed` and `seed_reporting` columns.
+- **`derived/seed_aggregates.csv`** gains a `reporting` column:
+  - a collapsed group gets per-seed columns (`skill_seed4601`, …, `collapsed_seed4603`)
+    and no mean or std;
+  - every other group keeps mean ± std.
+- The FLAT flag for regression now means "collapsed".
+
+### Degeneracy gate: relative spread rule (`guardrails.check_regression_health`)
+
+**Why the gate missed it:** a distinct-value count is fooled by floating-point noise.
+4603's 205 distinct values passed the "> 10 distinct" check; only the `trained` gate
+caught it.
+
+**New condition:** the degeneracy gate also fails when
+
+    std(model output) / std(target) < 1e-3   (MINIMUM_RELATIVE_OUTPUT_SPREAD)
+
+- **Model output and target:** as before, the model output is the window predicted
+  residual on residual paths and the predicted speed on the absolute path. The target is
+  what the network is trained to emit, over the evaluated runs: `actual − lookup` for
+  residuals, `actual` for absolute speed.
+- **The ratio is scale-free.** The report gains `target_std`, `relative_output_spread`
+  and the threshold.
+
+**Why 1e-3 and not 1e-6** (proposed by the PI): the ratio was measured on every
+regression run on disk *before* the threshold was fixed.
+
+| Runs | Ratio |
+|---|---|
+| Every trained run: centralized absolute, residual 60e and 300e; all S3 sweep runs that trained; the 5 trained S5 runs | 0.39 – 1.78 (weakest: centralized residual 60e, 0.386) |
+| R1 collapse, S3 E=1 fresh, S3 E=5 fresh | 0 |
+| S3 E=1 persistent (standardized MSE 1.0) | 1.2e-5 |
+| S5 natural K=2 seed 4603 | 1.3e-10 |
+
+1e-6 would have passed the S3 E=1 persistent collapse. 1e-3 sits about 80× above the
+highest collapse and about 390× below the weakest trained run.
+
+**Re-applied without retraining** (`--derived-only`, which now re-collects every finished
+job's metrics with the current code and stamps `metrics_recomputed_at`):
+
+| | Result |
+|---|---|
+| Regression jobs re-scored | all 6 finished S5 regression jobs |
+| Passing (degeneracy, trained) | 5, ratios 1.18 – 1.51 |
+| Failing | **only `fl/k2_natural/seed4603/regression`**: degeneracy ✗ (it passed at run time), trained ✗ |
+
+- Classification job metrics were recomputed and are unchanged.
+- The seed-4601 centralized runs that S5 reuses (group 3, not yet reached) sit at 0.93
+  (absolute) and 0.386 (residual), so they pass.
+- **Tests:**
+  - `test_fixtures/s5_k2_natural_seed4603_regression.json` holds 4603's real
+    predictions, copied verbatim from the gitignored run folder;
+  - the tests show 4603 passes the distinct-count check but fails the spread rule, and
+    raises when degeneracy alone is enforced;
+  - they check the threshold on both sides of 1e-3 and at the two measured boundary
+    ratios (1.2e-5 fails, 0.386 passes);
+  - they check the per-seed reporting rule and the per-seed aggregate table.
+
+`pytest` (full suite, data present): **171 passed, 1 skipped** (cudnn, macOS).
+
+**No reported number moved.** No completed job changes outcome. The gate only changes for
+4603, which had already failed on `trained`.
+
+---
+
 ## Session 5 — Experiment queue, run-level metrics, source probe, 003 control (2026-10-19)
 
 Branch `s5-experiments`. This entry covers the code and configs; no paper experiment

@@ -1,0 +1,17 @@
+job_id,family,condition,seed,client,method,accuracy,accuracy_test_2,accuracy_testing_20251124,macro_f1,num_correct,num_runs,wilson95_high,wilson95_low
+fl/k2_natural/seed4601/classification,fl,k2_natural,4601,,majority_vote,1.0,1.0,1.0,1.0,28,28,0.9999999999999998,0.8793566952341543
+fl/k2_natural/seed4601/classification,fl,k2_natural,4601,,mean_probability,1.0,1.0,1.0,1.0,28,28,0.9999999999999998,0.8793566952341543
+fl/k2_iid/seed4601/classification,fl,k2_iid,4601,,majority_vote,1.0,1.0,1.0,1.0,28,28,0.9999999999999998,0.8793566952341543
+fl/k2_iid/seed4601/classification,fl,k2_iid,4601,,mean_probability,1.0,1.0,1.0,1.0,28,28,0.9999999999999998,0.8793566952341543
+fl/k2_natural/seed4602/classification,fl,k2_natural,4602,,majority_vote,1.0,1.0,1.0,1.0,28,28,0.9999999999999998,0.8793566952341543
+fl/k2_natural/seed4602/classification,fl,k2_natural,4602,,mean_probability,1.0,1.0,1.0,1.0,28,28,0.9999999999999998,0.8793566952341543
+fl/k2_iid/seed4602/classification,fl,k2_iid,4602,,majority_vote,1.0,1.0,1.0,1.0,28,28,0.9999999999999998,0.8793566952341543
+fl/k2_iid/seed4602/classification,fl,k2_iid,4602,,mean_probability,1.0,1.0,1.0,1.0,28,28,0.9999999999999998,0.8793566952341543
+fl/k2_natural/seed4603/classification,fl,k2_natural,4603,,majority_vote,1.0,1.0,1.0,1.0,28,28,0.9999999999999998,0.8793566952341543
+fl/k2_natural/seed4603/classification,fl,k2_natural,4603,,mean_probability,1.0,1.0,1.0,1.0,28,28,0.9999999999999998,0.8793566952341543
+fl/k2_iid/seed4603/classification,fl,k2_iid,4603,,majority_vote,1.0,1.0,1.0,1.0,28,28,0.9999999999999998,0.8793566952341543
+fl/k2_iid/seed4603/classification,fl,k2_iid,4603,,mean_probability,1.0,1.0,1.0,1.0,28,28,0.9999999999999998,0.8793566952341543
+local_only/k2_natural/seed4601/classification,local_only,k2_natural,4601,client_0,majority_vote,0.4642857142857143,1.0,0.0,0.30389610389610383,13,28,0.6418731076553209,0.2953156998279538
+local_only/k2_natural/seed4601/classification,local_only,k2_natural,4601,client_0,mean_probability,0.4642857142857143,1.0,0.0,0.30389610389610383,13,28,0.6418731076553209,0.2953156998279538
+local_only/k2_natural/seed4601/classification,local_only,k2_natural,4601,client_1,majority_vote,0.6428571428571429,0.23076923076923078,1.0,0.5532967032967033,18,28,0.7929417049226233,0.4583030651442781
+local_only/k2_natural/seed4601/classification,local_only,k2_natural,4601,client_1,mean_probability,0.6071428571428571,0.15384615384615385,1.0,0.5285714285714286,17,28,0.764343134584204,0.42409044296597176

@@ -22,13 +22,19 @@ Gates (S4 policy): ``degeneracy`` and ``trained`` are enforced by the pipelines 
 residual path; skill is reported with its CI and never enforced. The queue enforces
 nothing itself. It flags **FLAT** convergence and keeps going: a classification run
 whose global-train accuracy rises by less than 0.05 from round 0, or that predicts a
-single class on the test set, or a regression run that failed the ``trained`` gate.
+single class on the test set, or a **collapsed** regression run (the current detector,
+re-applied to the saved predictions, fails ``degeneracy`` or ``trained``).
+
+A multi-seed group with a collapsed seed is reported per seed with "k of n seeds
+collapsed", never as mean ± std (PI decision, 2026-10-20; ``seed_reporting``).
 """
 
 from __future__ import annotations
 
+import contextlib
 import csv
 import fnmatch
+import io
 import json
 import math
 from dataclasses import dataclass
@@ -38,6 +44,7 @@ from typing import Any, Callable, Iterable, Sequence
 
 import numpy as np
 
+from .guardrails import check_regression_health
 from .regression_metrics import report_from_run_rows
 from .run_level_classification import METRICS_FILENAME, run_level_for_result
 
@@ -250,7 +257,35 @@ def _read_csv(path: Path) -> list[dict[str, str]]:
         return list(csv.DictReader(handle))
 
 
-def regression_metrics(summary: dict[str, Any]) -> dict[str, Any]:
+def reapply_detector(result: Path, absolute: bool, final_standardized_mse: float | None) -> dict[str, Any]:
+    """The current detector, re-run on a finished job's saved predictions (no training).
+
+    Mirrors what the pipelines pass: residual paths gate the window predicted residual,
+    the absolute path the run-level predicted speed. No gate is enforced here; the
+    report is read, not raised. The detector's own console line is suppressed because,
+    with nothing enforced, it would print "OK" for a collapsed run.
+    """
+    runs = _read_csv(result / "test_run_predictions.csv")
+    baseline_key = "source_subject_train_run_mean_mps" if absolute else "source_subject_train_mean_mps"
+    model_output = None
+    if not absolute:
+        model_output = [float(r["predicted_residual_mps"]) for r in _read_csv(result / "test_window_predictions.csv")]
+    with contextlib.redirect_stdout(io.StringIO()):
+        return check_regression_health(
+            actual=[float(r["actual_speed_mps"]) for r in runs],
+            predicted=[float(r["predicted_speed_mps"]) for r in runs],
+            baseline=[float(r[baseline_key]) for r in runs],
+            final_standardized_mse=final_standardized_mse,
+            enforced_gates=(),
+            run_label=f"S5 re-applied detector: {result}",
+            model_output=model_output,
+            model_output_name="predicted speed" if absolute else "window predicted residual",
+        )
+
+
+def regression_metrics(summary: dict[str, Any], reapplied: dict[str, Any]) -> dict[str, Any]:
+    """Headline regression numbers. Gates are the **current** detector re-applied to the
+    saved predictions; ``gate_degeneracy_at_run`` keeps what the run itself recorded."""
     report = summary["regression_report"]
     overall = report["overall"]
     metrics: dict[str, Any] = {
@@ -264,10 +299,22 @@ def regression_metrics(summary: dict[str, Any]) -> dict[str, Any]:
     for source, block in report["per_source"].items():
         metrics[f"skill_{source}"] = block["skill"]
         metrics[f"skill_{source}_ci_low"], metrics[f"skill_{source}_ci_high"] = block["skill_ci95"]
-    gates = summary.get("degenerate_model_check", {}).get("gates", {})
-    for gate in ("degeneracy", "trained"):
-        metrics[f"gate_{gate}"] = gates.get(gate, {}).get("passed")
+    recorded = summary.get("degenerate_model_check", {}).get("gates", {})
+    metrics["gate_degeneracy_at_run"] = recorded.get("degeneracy", {}).get("passed")
+    trained = reapplied["final_standardized_mse"] is not None
+    metrics["gate_degeneracy"] = reapplied["gates"]["degeneracy"]["passed"]
+    metrics["gate_trained"] = reapplied["gates"]["trained"]["passed"] if trained else None
+    metrics["relative_output_spread"] = reapplied["relative_output_spread"]
+    metrics["distinct_model_outputs"] = reapplied["distinct_predictions"]
+    metrics["final_standardized_mse"] = reapplied["final_standardized_mse"]
+    metrics["collapsed"] = metrics["gate_degeneracy"] is False or metrics["gate_trained"] is False
     return metrics
+
+
+def _regression_job_metrics(job: Job, result: Path, summary: dict[str, Any]) -> dict[str, Any]:
+    absolute = job.family == "centralized" and job.condition == "absolute"
+    mse = summary.get("degenerate_model_check", {}).get("final_standardized_mse")
+    return regression_metrics(summary, reapply_detector(result, absolute, mse))
 
 
 def classification_metrics(run_level: dict[str, Any]) -> dict[str, Any]:
@@ -337,8 +384,8 @@ def collect_metrics(job: Job, root: Path, outcome: str, samples_loader: Callable
                 summary = _regression_summary(client_dir)
                 if summary is None:
                     continue
-                per_client[client_dir.name] = regression_metrics(summary)
-                flats.append(per_client[client_dir.name]["gate_trained"] is False)
+                per_client[client_dir.name] = _regression_job_metrics(job, client_dir, summary)
+                flats.append(per_client[client_dir.name]["collapsed"])
         local = json.loads((result / "local_only_summary.json").read_text())
         metrics = {**_mean_std(per_client), "num_clients": len(per_client),
                    "failed_clients": json.dumps(local.get("failed_clients") or [])}
@@ -386,20 +433,13 @@ def collect_metrics(job: Job, root: Path, outcome: str, samples_loader: Callable
         directory.mkdir(parents=True, exist_ok=True)
         (directory / "regression_report.json").write_text(json.dumps(report, indent=2))
         committed = json.loads((result / "training_summary.json").read_text())
-        check = json.loads(json.dumps(committed.get("degenerate_model_check", {})))
-        gates = check.setdefault("gates", {})
-        if job.condition == "residual" and "trained" not in gates:
-            # Pre-S4 detector had no separate "trained" gate; derive it from the
-            # standardized MSE the committed detector recorded (S4: < 0.95).
-            threshold = check["thresholds"]["maximum_standardized_mse"]
-            gates["trained"] = {"enforced": False, "passed": check["final_standardized_mse"] < threshold,
-                                "note": "derived from the committed final_standardized_mse"}
-        summary = {"regression_report": report, "degenerate_model_check": check}
+        # The pre-S4 detector had no separate "trained" gate; re-applying the current
+        # detector evaluates it from the standardized MSE the committed run recorded.
+        summary = {"regression_report": report, "degenerate_model_check": committed.get("degenerate_model_check", {})}
     else:
         summary = _regression_summary(result)
-    metrics = regression_metrics(summary)
-    flat = None if job.condition == "absolute" else (metrics["gate_trained"] is False)
-    return {"metrics": metrics, "flat": flat}
+    metrics = _regression_job_metrics(job, result, summary)
+    return {"metrics": metrics, "flat": metrics["collapsed"]}
 
 
 def status_text(job: Job, record: dict[str, Any]) -> str:
@@ -478,7 +518,7 @@ def fallback_drops(job: Job, now: datetime, cutoff: datetime = FALLBACK_CUTOFF) 
 # --------------------------------------------------------------------------------------
 
 INDEX_BASE_COLUMNS = ["job_id", "group", "family", "condition", "seed", "task", "status", "flat",
-                      "wall_minutes", "result_dir"]
+                      "collapsed", "seed_reporting", "wall_minutes", "result_dir"]
 
 
 def _write_rows(path: Path, rows: Sequence[dict[str, Any]], leading: Sequence[str] = ()) -> None:
@@ -491,16 +531,22 @@ def _write_rows(path: Path, rows: Sequence[dict[str, Any]], leading: Sequence[st
 
 
 def rebuild_index(jobs: Sequence[Job], root: Path) -> list[dict[str, Any]]:
+    groups = _seed_groups(jobs, root)
     rows = []
     for job in jobs:
         record = read_job_record(job, root) or {}
+        metrics = dict(record.get("metrics") or {})
+        collapsed = metrics.pop("collapsed", None)
+        members = groups.get((job.family, job.condition, job.task), [])
         rows.append({
             "job_id": job.job_id, "group": job.group, "family": job.family, "condition": job.condition,
             "seed": job.seed, "task": job.task, "status": record.get("outcome", "pending"),
             "flat": "FLAT" if record.get("flat") else "",
+            "collapsed": "" if collapsed is None else ("yes" if collapsed else "no"),
+            "seed_reporting": seed_reporting(members) if len(members) > 1 and record.get("metrics") else "",
             "wall_minutes": "" if record.get("wall_seconds") is None else round(record["wall_seconds"] / 60, 1),
             "result_dir": str(job.result_dir(root)),
-            **(record.get("metrics") or {}),
+            **metrics,
         })
     _write_rows(root / "results_index.csv", rows, INDEX_BASE_COLUMNS)
     _write_seed_aggregates(jobs, root)
@@ -508,27 +554,81 @@ def rebuild_index(jobs: Sequence[Job], root: Path) -> list[dict[str, Any]]:
     return rows
 
 
-def _write_seed_aggregates(jobs: Sequence[Job], root: Path) -> None:
+#: Per-seed columns written for a group that is reported per seed.
+PER_SEED_KEYS = ("skill", "skill_ci_low", "skill_ci_high", "model_rmse_mps", "baseline_rmse_mps",
+                 "final_standardized_mse", "relative_output_spread")
+
+
+def _seed_groups(jobs: Sequence[Job], root: Path) -> dict[tuple[str, str, str], list[dict[str, Any]]]:
     groups: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
     for job in jobs:
         record = read_job_record(job, root)
         if record and record.get("outcome") in MEASURED_OUTCOMES | {"reused_canonical"} and record.get("metrics"):
             groups.setdefault((job.family, job.condition, job.task), []).append({"seed": job.seed, **record["metrics"]})
+    return groups
+
+
+def seed_reporting(members: Sequence[dict[str, Any]]) -> str:
+    """How a multi-seed group is reported (PI decision, 2026-10-20).
+
+    A group containing a collapsed seed is reported **per seed**, never as mean ± std:
+    with n = 3 and a collapsed seed whose skill is ~0, the mean would sit above every
+    trained seed (natural K=2: -0.207, -0.123 and 0.000 average to -0.110).
+    """
+    n = len(members)
+    collapsed = sum(bool(m.get("collapsed")) for m in members)
+    if collapsed:
+        return f"per seed; {collapsed} of {n} seeds collapsed"
+    if any("collapsed" in m for m in members):
+        return f"mean ± std over {n} seeds; 0 of {n} seeds collapsed"
+    return f"mean ± std over {n} seeds"
+
+
+def _write_seed_aggregates(jobs: Sequence[Job], root: Path) -> None:
     rows = []
-    for (family, condition, task), members in groups.items():
+    for (family, condition, task), members in _seed_groups(jobs, root).items():
         if len(members) < 2:
             continue
+        reporting = seed_reporting(members)
         row: dict[str, Any] = {"family": family, "condition": condition, "task": task,
-                               "seeds": " ".join(str(m["seed"]) for m in members), "n": len(members)}
-        for key in sorted({k for m in members for k in m} - {"seed"}):
-            values = [m.get(key) for m in members]
-            if all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in values):
-                array = np.asarray(values, dtype=float)
-                row[f"{key}_mean"] = float(array.mean())
-                row[f"{key}_std"] = float(array.std(ddof=1))
+                               "seeds": " ".join(str(m["seed"]) for m in members), "n": len(members),
+                               "reporting": reporting}
+        if reporting.startswith("per seed"):
+            for member in members:
+                tag = f"seed{member['seed']}"
+                row[f"collapsed_{tag}"] = bool(member.get("collapsed"))
+                for key in PER_SEED_KEYS:
+                    if key in member:
+                        row[f"{key}_{tag}"] = member[key]
+        else:
+            for key in sorted({k for m in members for k in m} - {"seed"}):
+                values = [m.get(key) for m in members]
+                if all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in values):
+                    array = np.asarray(values, dtype=float)
+                    row[f"{key}_mean"] = float(array.mean())
+                    row[f"{key}_std"] = float(array.std(ddof=1))
         rows.append(row)
     if rows:
-        _write_rows(root / "derived/seed_aggregates.csv", rows, ["family", "condition", "task", "seeds", "n"])
+        _write_rows(root / "derived/seed_aggregates.csv", rows, ["family", "condition", "task", "seeds", "n", "reporting"])
+
+
+def recompute_metrics(jobs: Sequence[Job], root: Path, samples_loader: Callable[[], Any]) -> list[tuple[Job, dict[str, Any]]]:
+    """Re-collect every finished job's metrics with the current code, without retraining.
+
+    Outcomes are left as recorded; only ``metrics``, ``flat`` and ``per_client`` are
+    replaced, and ``metrics_recomputed_at`` is stamped. Used by ``--derived-only``.
+    """
+    updated = []
+    for job in jobs:
+        record = read_job_record(job, root)
+        if not record or record.get("outcome") not in MEASURED_OUTCOMES | {"reused_canonical"}:
+            continue
+        record.pop("per_client", None)
+        record.update(collect_metrics(job, root, record["outcome"], samples_loader))
+        record["metrics_recomputed_at"] = datetime.now().isoformat(timespec="seconds")
+        (job.directory(root) / "job.json").write_text(json.dumps(record, indent=2, default=str))
+        updated.append((job, record))
+    return updated
 
 
 def _run_level_files(job: Job, root: Path) -> list[tuple[str, Path]]:

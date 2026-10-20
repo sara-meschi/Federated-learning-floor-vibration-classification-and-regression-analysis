@@ -1,0 +1,17 @@
+job_id,family,condition,seed,client,subject_id,source_id,majority_vote_correct,majority_vote_labels,mean_probability_correct,mean_probability_labels,num_runs,num_windows,window_accuracy
+fl/k2_natural/seed4601/classification,fl,k2_natural,4601,,003,test_2,4,"{""subject_003_walking"": 4}",4,"{""subject_003_walking"": 4}",4,28,0.9642857142857143
+fl/k2_natural/seed4601/classification,fl,k2_natural,4601,,003,testing_20251124,3,"{""subject_003_walking"": 3}",3,"{""subject_003_walking"": 3}",3,28,0.9642857142857143
+fl/k2_iid/seed4601/classification,fl,k2_iid,4601,,003,test_2,4,"{""subject_003_walking"": 4}",4,"{""subject_003_walking"": 4}",4,28,1.0
+fl/k2_iid/seed4601/classification,fl,k2_iid,4601,,003,testing_20251124,3,"{""subject_003_walking"": 3}",3,"{""subject_003_walking"": 3}",3,28,1.0
+fl/k2_natural/seed4602/classification,fl,k2_natural,4602,,003,test_2,4,"{""subject_003_walking"": 4}",4,"{""subject_003_walking"": 4}",4,28,1.0
+fl/k2_natural/seed4602/classification,fl,k2_natural,4602,,003,testing_20251124,3,"{""subject_003_walking"": 3}",3,"{""subject_003_walking"": 3}",3,28,0.9285714285714286
+fl/k2_iid/seed4602/classification,fl,k2_iid,4602,,003,test_2,4,"{""subject_003_walking"": 4}",4,"{""subject_003_walking"": 4}",4,28,1.0
+fl/k2_iid/seed4602/classification,fl,k2_iid,4602,,003,testing_20251124,3,"{""subject_003_walking"": 3}",3,"{""subject_003_walking"": 3}",3,28,1.0
+fl/k2_natural/seed4603/classification,fl,k2_natural,4603,,003,test_2,4,"{""subject_003_walking"": 4}",4,"{""subject_003_walking"": 4}",4,28,0.9642857142857143
+fl/k2_natural/seed4603/classification,fl,k2_natural,4603,,003,testing_20251124,3,"{""subject_003_walking"": 3}",3,"{""subject_003_walking"": 3}",3,28,1.0
+fl/k2_iid/seed4603/classification,fl,k2_iid,4603,,003,test_2,4,"{""subject_003_walking"": 4}",4,"{""subject_003_walking"": 4}",4,28,1.0
+fl/k2_iid/seed4603/classification,fl,k2_iid,4603,,003,testing_20251124,3,"{""subject_003_walking"": 3}",3,"{""subject_003_walking"": 3}",3,28,1.0
+local_only/k2_natural/seed4601/classification,local_only,k2_natural,4601,client_0,003,test_2,4,"{""subject_003_walking"": 4}",4,"{""subject_003_walking"": 4}",4,28,1.0
+local_only/k2_natural/seed4601/classification,local_only,k2_natural,4601,client_0,003,testing_20251124,0,"{""subject_002_walking"": 3}",0,"{""subject_002_walking"": 3}",3,28,0.0
+local_only/k2_natural/seed4601/classification,local_only,k2_natural,4601,client_1,003,test_2,3,"{""subject_003_walking"": 3, ""subject_004_walking"": 1}",2,"{""subject_003_walking"": 2, ""subject_004_walking"": 2}",4,28,0.5714285714285714
+local_only/k2_natural/seed4601/classification,local_only,k2_natural,4601,client_1,003,testing_20251124,3,"{""subject_003_walking"": 3}",3,"{""subject_003_walking"": 3}",3,28,1.0

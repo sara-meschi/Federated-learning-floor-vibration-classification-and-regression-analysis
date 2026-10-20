@@ -10,7 +10,7 @@ client_num_cpus 3, one task per job.
   python scripts/run_s5_queue.py --dry-run            # the plan, status and ETA
   python scripts/run_s5_queue.py                      # run everything not yet done
   python scripts/run_s5_queue.py --stop-by 05:00      # start only jobs that end by 05:00
-  python scripts/run_s5_queue.py --derived-only       # rebuild the index and tables
+  python scripts/run_s5_queue.py --derived-only       # re-score finished jobs, rebuild tables
 
 Restart-safe: finished jobs are skipped; a job killed mid-run is set aside and re-run.
 Each job writes only to its own folder under --root; progress goes to queue.log and one
@@ -58,6 +58,7 @@ from redo_by_sara.s5_queue import (  # noqa: E402
     parse_stop_by,
     read_job_record,
     rebuild_index,
+    recompute_metrics,
     select_jobs,
     status_text,
 )
@@ -351,8 +352,22 @@ def main() -> None:
         queue.dry_run()
         return
     if args.derived_only:
+        # Re-collects every finished job's metrics with the current code (including the
+        # current degenerate-model detector re-applied to saved predictions); no training.
+        updated = recompute_metrics(queue.all_jobs, queue.root, queue.samples)
         rebuild_index(queue.all_jobs, queue.root)
-        print(f"Rebuilt {queue.root / 'results_index.csv'} and {queue.root / 'derived'}", flush=True)
+        queue.log(f"DERIVED-ONLY: recomputed metrics for {len(updated)} finished job(s)")
+        print(f"{'job':<46} {'outcome':<17} {'spread':>9} {'degen@run':>9} {'degen':>6} {'trained':>7} collapsed")
+        for job, record in updated:
+            m = record.get("metrics") or {}
+            for client, cm in ([("", m)] if job.family != "local_only" else sorted((record.get("per_client") or {}).items())):
+                if "gate_degeneracy" not in cm:
+                    continue
+                label = job.job_id + (f" [{client}]" if client else "")
+                spread = cm["relative_output_spread"]
+                print(f"{label:<46} {record['outcome']:<17} {spread:>9.2e} {str(cm['gate_degeneracy_at_run']):>9} "
+                      f"{str(cm['gate_degeneracy']):>6} {str(cm['gate_trained']):>7} {cm['collapsed']}")
+        print(f"Recomputed {len(updated)} job(s); rebuilt {queue.root / 'results_index.csv'} and {queue.root / 'derived'}", flush=True)
         return
     signal.signal(signal.SIGINT, _raise_interrupt)
     signal.signal(signal.SIGTERM, _raise_interrupt)

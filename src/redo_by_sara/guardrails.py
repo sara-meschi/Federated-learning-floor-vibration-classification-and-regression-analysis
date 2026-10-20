@@ -212,6 +212,16 @@ class DegenerateModelError(RuntimeError):
 #: distinct predicted residual across all 238 test rows.
 MINIMUM_DISTINCT_PREDICTIONS = 10
 
+#: Degeneracy also fails when the model output's standard deviation is below this
+#: fraction of the standard deviation of the target it is trained to produce (S5).
+#: A distinct-value count is fooled by floating-point noise: S5 natural K=2 seed 4603
+#: emitted 205 distinct residuals with std 5.2e-12 m/s (ratio 1.3e-10). Measured
+#: before the threshold was fixed (2026-10-20): every trained run on disk sits at
+#: 0.39-1.78; the known collapses at 0 (R1, S3 E=5 fresh), 1.2e-5 (S3 E=1 persistent)
+#: and 1.3e-10. 1e-3 is ~80x above the highest collapse and ~390x below the weakest
+#: trained run. A ratio of 1e-6 would have passed the S3 E=1 persistent collapse.
+MINIMUM_RELATIVE_OUTPUT_SPREAD = 1e-3
+
 #: Standardized MSE of 1.0 means "predict zero residual" — the trivial baseline exactly.
 MAXIMUM_STANDARDIZED_MSE = 0.95
 
@@ -265,9 +275,16 @@ def check_regression_health(
     thing and thresholding them as one block would fail a model that is merely weak:
 
     ``degeneracy``
-        Distinct-prediction count and prediction standard deviation. A constant predictor
-        is not a model at all. Enforced on **every** regression path; this is the check
-        that would have caught R1.
+        Distinct-prediction count, and the **relative spread** of the model output:
+        std(model output) / std(target) must be at least
+        ``MINIMUM_RELATIVE_OUTPUT_SPREAD``. The target is what the network is trained to
+        emit, measured over the evaluated runs: the residual ``actual - baseline`` when
+        ``model_output`` is given (residual paths), else ``actual`` (absolute path). The
+        ratio is scale-free, so it holds for m/s residuals and absolute speeds alike, and
+        it catches a model whose outputs differ only by floating-point noise, which a
+        distinct-value count does not. A constant predictor is not a model at all.
+        Enforced on **every** regression path; this is the check that would have caught
+        R1.
 
     ``trained``
         Final global-train standardized MSE < 0.95, i.e. training moved the model off the
@@ -312,6 +329,14 @@ def check_regression_health(
     ).reshape(-1)
     distinct = int(np.unique(output_array).size)
     prediction_std = float(np.std(output_array))
+    actual_array = np.asarray(actual, dtype=np.float64).reshape(-1)
+    target_array = (
+        actual_array
+        if model_output is None
+        else actual_array - np.asarray(baseline, dtype=np.float64).reshape(-1)
+    )
+    target_std = float(np.std(target_array))
+    relative_spread = prediction_std / target_std if target_std > 0.0 else None
     score = skill_score(actual, predicted, baseline)
 
     degeneracy_failures: list[str] = []
@@ -324,6 +349,12 @@ def check_regression_health(
     if prediction_std <= 0.0:
         degeneracy_failures.append(
             f"{model_output_name} std is {prediction_std} (need > 0)"
+        )
+    elif relative_spread is not None and relative_spread < MINIMUM_RELATIVE_OUTPUT_SPREAD:
+        degeneracy_failures.append(
+            f"{model_output_name} std {prediction_std:.3g} is {relative_spread:.3g} x the "
+            f"target std {target_std:.3g} (need >= {MINIMUM_RELATIVE_OUTPUT_SPREAD:g}); "
+            "the outputs differ only by numerical noise, so this is a constant predictor"
         )
 
     trained_failures: list[str] = []
@@ -374,12 +405,15 @@ def check_regression_health(
         "num_model_outputs": int(output_array.size),
         "distinct_predictions": distinct,
         "prediction_std": prediction_std,
+        "target_std": target_std,
+        "relative_output_spread": relative_spread,
         "final_standardized_mse": (
             None if final_standardized_mse is None else float(final_standardized_mse)
         ),
         "skill_score_vs_subject_mean": score,
         "thresholds": {
             "minimum_distinct_predictions": MINIMUM_DISTINCT_PREDICTIONS,
+            "minimum_relative_output_spread": MINIMUM_RELATIVE_OUTPUT_SPREAD,
             "maximum_standardized_mse": MAXIMUM_STANDARDIZED_MSE,
             "minimum_skill_score": MINIMUM_SKILL_SCORE,
         },
