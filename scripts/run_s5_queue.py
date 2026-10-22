@@ -3,8 +3,9 @@
 Order (CHANGES.md, S5): (1) K=2 natural and IID, init seeds 4601/4602/4603; (2) their
 local-only runs; (3) centralized seeds 4602/4603 (seed 4601 is scored from the committed
 run), the source probe, the subject-003 cross-session control; (4) K=3 rho = 1.0 (= IID),
-0.375, 0; (5) Dirichlet alpha = 0.1; (6) the remaining local-only runs. Split seed 4601
-throughout. Every FL and local-only job runs FedAvg, E=5, persistent client optimizer,
+0.375, 0; (5) Dirichlet alpha = 0.1; (6) the remaining local-only runs; (7) added
+2026-10-22: Dirichlet alpha = 0.1 classification at init seeds 4602/4603, FL then
+local-only. Split seed 4601 throughout. Every FL and local-only job runs FedAvg, E=5, persistent client optimizer,
 client_num_cpus 3, one task per job.
 
   python scripts/run_s5_queue.py --dry-run            # the plan, status and ETA

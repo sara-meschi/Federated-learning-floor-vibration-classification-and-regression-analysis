@@ -114,19 +114,26 @@ def test_summarize_runs_accuracy_macro_f1_and_groups() -> None:
 
 def test_job_matrix_counts_and_order() -> None:
     jobs = build_jobs()
-    assert len(jobs) == 43
-    assert sum(not j.reuse_canonical for j in jobs) == 40
-    assert len({j.job_id for j in jobs}) == 43
+    assert len(jobs) == 47
+    assert sum(not j.reuse_canonical for j in jobs) == 44
+    assert len({j.job_id for j in jobs}) == 47
     assert [j.group for j in jobs] == sorted(j.group for j in jobs)
-    by_group = {g: sum(j.group == g and not j.reuse_canonical for j in jobs) for g in range(1, 7)}
-    assert by_group == {1: 12, 2: 4, 3: 8, 4: 6, 5: 2, 6: 8}
+    by_group = {g: sum(j.group == g and not j.reuse_canonical for j in jobs) for g in range(1, 8)}
+    assert by_group == {1: 12, 2: 4, 3: 8, 4: 6, 5: 2, 6: 8, 7: 4}
     assert jobs[0].job_id == "fl/k2_natural/seed4601/classification"
     assert jobs[1].job_id == "fl/k2_natural/seed4601/regression"
     fl = [j for j in jobs if j.family == "fl"]
     assert {(j.condition, j.seed) for j in fl if j.condition.startswith("k2")} == {
         (c, s) for c in ("k2_natural", "k2_iid") for s in (4601, 4602, 4603)
     }
-    assert all(j.seed == 4601 for j in jobs if j.family == "local_only" or j.condition.startswith("k3"))
+    assert all(j.seed == 4601 for j in jobs if j.group < 7 and (j.family == "local_only" or j.condition.startswith("k3")))
+    # group 7 (added 2026-10-22): Dirichlet classification at the two extra init seeds
+    assert [(j.family, j.seed, j.task) for j in jobs if j.group == 7] == [
+        ("fl", 4602, "classification"), ("fl", 4603, "classification"),
+        ("local_only", 4602, "classification"), ("local_only", 4603, "classification"),
+    ]
+    assert all(j.condition == "k3_dirichlet0.1" and j.fallback_level == 0 for j in jobs if j.group == 7)
+    assert [j.job_id for j in jobs[:43]] == [j.job_id for j in jobs if j.group < 7]
     assert {j.condition for j in jobs if j.family == "local_only"} == {
         "k2_natural", "k2_iid", "k3_iid", "k3_rho0.375", "k3_rho0", "k3_dirichlet0.1"
     }

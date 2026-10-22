@@ -181,6 +181,12 @@ def build_jobs() -> list[Job]:
     fl(5, "fl", "k3_dirichlet0.1", SPLIT_SEED)  # (5) Dirichlet
     for condition in ("k3_iid", "k3_rho0.375", "k3_rho0", "k3_dirichlet0.1"):  # (6) remaining local-only
         fl(6, "local_only", condition, SPLIT_SEED)
+    # (7) Added 2026-10-22 (PI): Dirichlet alpha = 0.1 classification at init seeds 4602 and
+    # 4603, FL and local-only, same settings and gates. Appended so jobs 1-43 keep their order.
+    for family in ("fl", "local_only"):
+        for seed in INIT_SEEDS[1:]:
+            jobs.append(Job(f"{family}/k3_dirichlet0.1/seed{seed}/classification", 7, family,
+                            "k3_dirichlet0.1", seed, "classification"))
     return jobs
 
 

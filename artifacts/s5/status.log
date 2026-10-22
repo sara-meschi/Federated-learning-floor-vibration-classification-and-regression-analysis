@@ -33,3 +33,14 @@
 [10-21 04:38] 32/43 fl/k3_rho0/seed4601/classification completed 33.4 min | window acc 0.977 | run acc (vote) 28/28 [0.88, 1.00] | 5.6 h elapsed, ~13.0 h left
 [10-21 05:03] 33/43 fl/k3_rho0/seed4601/regression failed_detector FLAT 24.9 min | skill -0.000 [-0.000, +0.000] | RMSE 0.0405 vs lookup 0.0405 | gates degeneracy✗ trained✗ | 6.0 h elapsed, ~12.6 h left
 [10-21 05:03] STOP-BY 10-21 06:00: not starting fl/k3_dirichlet0.1/seed4601/classification (estimate 60 min x 1.10 would end 06:09). Skipped this session: 10 job(s), ~12.6 h. Next in line: fl/k3_dirichlet0.1/seed4601/classification.
+[10-21 23:18] 34/43 fl/k3_dirichlet0.1/seed4601/classification completed 42.0 min | window acc 0.827 | run acc (vote) 22/28 [0.60, 0.90] | 0.7 h elapsed, ~11.6 h left
+[10-21 23:49] 35/43 fl/k3_dirichlet0.1/seed4601/regression completed 31.0 min | trained | skill -0.272 [-3.937, +0.258] | RMSE 0.0457 vs lookup 0.0405 | gates degeneracy✓ trained✓ | 1.2 h elapsed, ~10.8 h left
+[10-22 00:34] 36/43 local_only/k3_iid/seed4601/classification completed 44.5 min | 3 clients: run acc (vote) 1.000 ± 0.000, window acc 0.987 | 2.0 h elapsed, ~7.8 h left
+[10-22 01:07] 37/43 local_only/k3_iid/seed4601/regression completed 33.0 min | 3 of 3 clients in mean: skill -0.125 ± 0.343 | 0 of 3 clients failed | {"client_0": "trained", "client_1": "trained", "client_2": "trained"} | 2.5 h elapsed, ~5.3 h left
+[10-22 01:52] 38/43 local_only/k3_rho0.375/seed4601/classification completed 44.9 min | 3 clients: run acc (vote) 0.976 ± 0.041, window acc 0.959 | 3.3 h elapsed, ~4.5 h left
+[10-22 02:25] 39/43 local_only/k3_rho0.375/seed4601/regression completed 33.3 min | 3 of 3 clients in mean: skill -0.329 ± 0.389 | 0 of 3 clients failed | {"client_0": "trained", "client_1": "trained", "client_2": "trained"} | 3.8 h elapsed, ~4.0 h left
+[10-22 03:10] 40/43 local_only/k3_rho0/seed4601/classification completed 44.8 min | 3 clients: run acc (vote) 0.976 ± 0.021, window acc 0.951 | 4.6 h elapsed, ~3.3 h left
+[10-22 03:43] 41/43 local_only/k3_rho0/seed4601/regression completed_with_failed_clients FLAT 33.2 min | 2 of 3 clients in mean: skill -0.073 ± 0.122 | 1 of 3 clients failed | {"client_0": "did not train", "client_1": "trained", "client_2": "trained"} | 5.1 h elapsed, ~2.7 h left
+[10-22 04:29] 42/43 local_only/k3_dirichlet0.1/seed4601/classification completed 45.3 min | 3 clients: run acc (vote) 0.452 ± 0.297, window acc 0.521 | 5.9 h elapsed, ~1.2 h left
+[10-22 05:02] 43/43 local_only/k3_dirichlet0.1/seed4601/regression completed 33.5 min | 3 of 3 clients in mean: skill -2.237 ± 3.767 | 0 of 3 clients failed | {"client_0": "trained", "client_1": "trained", "client_2": "trained"} | 6.4 h elapsed, ~0.0 h left
+[10-22 05:02] QUEUE END: 43/43 terminal; crashed (re-run on restart): none

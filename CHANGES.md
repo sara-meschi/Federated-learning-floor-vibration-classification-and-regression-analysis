@@ -4,6 +4,275 @@ What changed, and every number that moved as a result. Newest first.
 
 ---
 
+## Session 5 (amendment 3) — Dirichlet classification at two more init seeds (2026-10-22)
+
+PI request: 4 new queue jobs, group 7. The only code change is the job list in
+`s5_queue.build_jobs`.
+- **The jobs:** Dirichlet α = 0.1 classification at init seeds 4602 and 4603, FL first,
+  then local-only.
+- **Settings:** split seed 4601, `configs/s5_k3_dirichlet0.1.yaml`, FedAvg E=5
+  persistent, `client_num_cpus: 3`, global 9-channel evaluation, same gates.
+- **Ordering:** the jobs are appended, so jobs 1–43 keep their order, IDs and outcomes.
+  A restart skips all 43 and runs only these 4.
+- **Estimated time:** 2.9 h, from the measured seed-4601 Dirichlet runs (FL 42 min,
+  local-only 45 min).
+- **Effect on the tables:** with 3 seeds, Dirichlet classification moves into
+  `derived/seed_aggregates.csv` for FL and for local-only. The seed-4601 values in the
+  results entry below are unchanged.
+- **Tests:** the job-matrix test literals become 47 jobs, 44 training jobs and group 7 = 4.
+  New assertions pin group 7's composition and that jobs 1–43 are unchanged.
+  `test_s5.py`: 35 passed.
+
+---
+
+## Session 5 — Results (2026-10-22)
+
+The S5 queue finished: **43 of 43 jobs terminal, none crashed**. It ran over three
+nights:
+
+| Night | Commit | Jobs |
+|---|---|---|
+| 2026-10-19/20 | `c05883c` | 1–13 |
+| 2026-10-20/21 | `c71e8d5` | 14–33 |
+| 2026-10-21/22 | `34babba` | 34–43 |
+
+The gates and labels in this entry are the current ones (amendments 1 and 2 below). Jobs
+1–33 were re-derived under them with `--derived-only`, without retraining.
+
+**Measured wall time:** 20.7 h of training over 40 training jobs. FL classification took
+33–48 min, FL regression 25–35 min, local-only classification 45–48 min, local-only
+regression 32–38 min, centralized 7–12 min, the source probe 6.8 min and the 003 control
+2.4 min.
+
+**Setting:**
+- FL and local-only: FedAvg, E=5, persistent client optimizer, 60 rounds,
+  `client_num_cpus: 3`.
+- Split seed 4601 everywhere. Every model is evaluated on the same 28 held-out test runs,
+  with all 9 channels.
+
+**How to read the numbers:**
+- Classification is run-level accuracy by majority vote, with a Wilson 95% interval.
+  Mean probability gives the same counts wherever it isn't listed.
+- Regression is skill = 1 − SSE_model / SSE_lookup against the source/subject train-mean
+  lookup, with a run-level bootstrap 95% CI (10,000 resamples, seed 4601). The lookup
+  RMSE is 0.0405 m/s in every run.
+- **Labels:** `trained`, `did not train` (has output spread, fails trained) or
+  `collapsed` (fails the output-spread check).
+- **The trained gate:** FL and centralized models are gated on global-train standardized
+  MSE < 0.95; a local-only client on its own-data standardized MSE < 0.95.
+
+### Summary
+
+| Condition | Classification: FL (centralized for row 1) | Classification: local-only (mean ± std over clients) | Regression: FL (centralized for row 1) | Regression: local-only (mean ± std over trained clients) |
+|---|---|---|---|---|
+| **Centralized** (3 init seeds) | 28/28 [0.879, 1.000] on every seed | — | **Residual:** +0.098 ± 0.021, 3 of 3 trained. Per seed: +0.121 [−0.288, +0.235], +0.082 [−0.097, +0.186], +0.091 [−0.034, +0.165]. **Absolute:** −1.739 ± 0.446. Per seed: −1.485 [−5.574, −0.848], −1.478 [−5.760, −0.772], −2.254 [−7.358, −1.382]. | — |
+| **K=2 IID** (FL: 3 seeds) | 28/28 [0.879, 1.000] on every seed | 1.000 ± 0.000. Each client 28/28 [0.879, 1.000]. | +0.172 ± 0.096, 3 of 3 trained. Per seed: +0.089 [−3.123, +0.576], +0.150 [−2.074, +0.543], +0.277 [−2.307, +0.658]. | +0.010 ± 0.358, 0 of 2 clients failed |
+| **K=2 natural** (FL: 3 seeds) | 28/28 [0.879, 1.000] on every seed | 0.554 ± 0.126. client_0 13/28 [0.295, 0.642]; client_1 18/28 [0.458, 0.793]. | **Per seed; 1 of 3 seeds collapsed.** 4601: −0.207 [−4.128, +0.334] trained. 4602: −0.123 [−4.367, +0.501] trained. 4603: −1.1e-6 [−3.5e-6, +4.4e-7] **collapsed**. | −0.726 ± 0.869, 0 of 2 clients failed |
+| **K=3 ρ = 1.0** (= IID) | 28/28 [0.879, 1.000] | 1.000 ± 0.000. Each client 28/28. | +0.101 [−2.263, +0.480], trained | −0.125 ± 0.343, 0 of 3 clients failed |
+| **K=3 ρ = 0.375** | 28/28 [0.879, 1.000] | 0.976 ± 0.041. 28/28, 28/28, 26/28 [0.774, 0.980]. | +0.046 [−0.025, +0.077], **did not train** | −0.329 ± 0.389, 0 of 3 clients failed |
+| **K=3 ρ = 0** | 28/28 [0.879, 1.000] | 0.976 ± 0.021. 27/28 [0.823, 0.994], 28/28, 27/28. | −1.9e-4 [−4.8e-4, +7.9e-5], **collapsed** | −0.073 ± 0.122 over 2 clients; **1 of 3 clients failed** (client_0 did not train) |
+| **K=3 Dirichlet α = 0.1** | **22/28 [0.605, 0.898]** | **0.452 ± 0.297.** 10/28 [0.207, 0.542]; 6/28 [0.102, 0.395]; 22/28 [0.605, 0.898]. | −0.272 [−3.937, +0.258], trained | −2.237 ± 3.767, 0 of 3 clients failed |
+
+What the table shows (description, not interpretation):
+- **Classification is at ceiling** (28/28) in every FL and centralized condition except
+  Dirichlet. Local-only falls below FL under natural K=2 and Dirichlet.
+- **No regression skill interval excludes zero in the positive direction.** Every FL
+  regression run that trained has a CI containing 0. The local-only means are at or
+  below 0.
+- **The channel axis grades monotonically for FL regression:** ρ = 1.0 trained,
+  ρ = 0.375 did not train, ρ = 0 collapsed. FL classification is unaffected (28/28 at
+  every ρ).
+
+### Regression detail
+
+Per-source skill uses intervals resampled within the source (Test_2: 13 runs; 20251124:
+15 runs). "Gated MSE" is the value the trained gate read.
+
+| Run | Label | Skill, overall | Skill, Test_2 | Skill, 20251124 | RMSE (m/s) | R² within subject | Gated MSE | Spread ratio |
+|---|---|---|---|---|---|---|---|---|
+| Centralized residual 4601 | trained | +0.121 [−0.288, +0.235] | −0.042 [−0.687, +0.245] | +0.136 [−0.348, +0.295] | 0.0380 | 0.050 | 0.716 | 0.386 |
+| Centralized residual 4602 | trained | +0.082 [−0.097, +0.186] | +0.070 [−0.384, +0.331] | +0.083 [−0.121, +0.208] | 0.0388 | 0.007 | 0.855 | 0.209 |
+| Centralized residual 4603 | trained | +0.091 [−0.034, +0.165] | +0.045 [−0.195, +0.219] | +0.095 [−0.064, +0.194] | 0.0386 | 0.017 | 0.922 | 0.116 |
+| Centralized absolute 4601 | trained (no trained gate) | −1.485 [−5.574, −0.848] | −3.855 [−10.762, −1.115] | −1.264 [−5.893, −0.638] | 0.0639 | −1.687 | n/a | 0.921 |
+| Centralized absolute 4602 | trained (no trained gate) | −1.478 [−5.760, −0.772] | −4.213 [−11.966, −1.081] | −1.224 [−5.952, −0.565] | 0.0638 | −1.680 | n/a | 0.911 |
+| Centralized absolute 4603 | trained (no trained gate) | −2.254 [−7.358, −1.382] | −4.985 [−12.054, −1.395] | −2.000 [−7.919, −1.159] | 0.0731 | −2.519 | n/a | 0.923 |
+| FL K=2 IID 4601 | trained | +0.089 [−3.123, +0.576] | −1.095 [−1.950, −0.196] | +0.199 [−4.074, +0.644] | 0.0387 | 0.015 | 0.0091 | 1.48 |
+| FL K=2 IID 4602 | trained | +0.150 [−2.074, +0.543] | −2.369 [−4.652, −0.485] | +0.384 [−1.699, +0.630] | 0.0374 | 0.081 | 0.0013 | 1.51 |
+| FL K=2 IID 4603 | trained | +0.277 [−2.307, +0.658] | −0.517 [−1.538, +0.384] | +0.351 [−3.236, +0.709] | 0.0344 | 0.218 | 0.0084 | 1.30 |
+| FL K=2 natural 4601 | trained | −0.207 [−4.128, +0.334] | −1.293 [−3.123, −0.183] | −0.106 [−5.441, +0.426] | 0.0445 | −0.305 | 0.119 | 1.18 |
+| FL K=2 natural 4602 | trained | −0.123 [−4.367, +0.501] | −1.225 [−2.261, −0.209] | −0.020 [−5.952, +0.572] | 0.0429 | −0.214 | 0.0398 | 1.51 |
+| FL K=2 natural 4603 | **collapsed** | −1.1e-6 [−3.5e-6, +4.4e-7] | ≈ 0 | ≈ 0 | 0.0405 | −0.081 | 1.000 | 1.3e-10 (205 distinct values) |
+| FL K=3 ρ=1.0 | trained | +0.101 [−2.263, +0.480] | −0.443 [−1.417, +0.276] | +0.152 [−3.103, +0.543] | 0.0384 | 0.028 | 0.0549 | 1.01 |
+| FL K=3 ρ=0.375 | **did not train** | +0.046 [−0.025, +0.077] | +0.039 [−0.032, +0.189] | +0.047 [−0.049, +0.082] | 0.0396 | −0.032 | 0.991 | 0.064 |
+| FL K=3 ρ=0 | **collapsed** | −1.9e-4 [−4.8e-4, +7.9e-5] | −0.001 | ≈ 0 | 0.0405 | −0.082 | 1.000 | 8.3e-11 (19 distinct values) |
+| FL K=3 Dirichlet | trained | −0.272 [−3.937, +0.258] | −0.986 [−2.747, −0.322] | −0.206 [−5.320, +0.397] | 0.0457 | −0.376 | 0.314 | 1.14 |
+
+- **Reproductions:**
+  - FL K=2 natural seed 4601 reproduces the S3 confirmation run exactly: −0.207
+    [−4.128, +0.334].
+  - FL K=3 ρ=1.0 reproduces the S3 IID K=3 winner: +0.101 [−2.263, +0.480].
+  - Centralized residual 4601 reproduces S3/S4: +0.121.
+- **Test_2 skill has an interval entirely below 0** in:
+  - FL K=2 IID seeds 4601 and 4602;
+  - FL K=2 natural seeds 4601 and 4602;
+  - FL Dirichlet;
+  - all three centralized absolute runs.
+
+  No centralized residual run is in that list.
+
+**Local-only regression, per client.** "Own" is the own-data standardized MSE that the
+trained gate reads; "global" is reported, not gated.
+
+| Condition | Client | Label | Skill | RMSE (m/s) | Own | Global |
+|---|---|---|---|---|---|---|
+| K=2 IID | client_0 | trained | +0.263 [−0.445, +0.386] | 0.0348 | 3.1e-6 | 0.472 |
+| K=2 IID | client_1 | trained | −0.243 [−0.936, −0.012] | 0.0452 | 0.525 | 0.764 |
+| K=2 natural | client_0 (Test_2) | trained | −0.112 [−0.556, +0.015] | 0.0427 | 1.1e-6 | 0.827 |
+| K=2 natural | client_1 (20251124) | trained | −1.341 [−10.652, +0.031] | 0.0620 | 2.0e-6 | 3.235 |
+| K=3 ρ=1.0 | client_0 | trained | +0.199 [−2.157, +0.557] | 0.0363 | 0.0017 | 0.799 |
+| K=3 ρ=1.0 | client_1 | trained | −0.089 [−1.402, +0.146] | 0.0423 | 0.516 | 0.832 |
+| K=3 ρ=1.0 | client_2 | trained | −0.484 [−4.415, +0.090] | 0.0494 | 0.097 | 0.976 |
+| K=3 ρ=0.375 | client_0 | trained | −0.740 [−3.094, −0.126] | 0.0535 | 0.269 | 1.380 |
+| K=3 ρ=0.375 | client_1 | trained | +0.033 [−1.093, +0.236] | 0.0399 | 5.1e-6 | 1.003 |
+| K=3 ρ=0.375 | client_2 | trained | −0.280 [−3.265, +0.201] | 0.0458 | 0.023 | 0.881 |
+| K=3 ρ=0 | client_0 | **did not train** | −0.014 [−0.074, −0.003] | 0.0408 | 0.980 | 0.992 |
+| K=3 ρ=0 | client_1 | trained | −0.159 [−2.025, +0.172] | 0.0436 | 0.012 | 1.106 |
+| K=3 ρ=0 | client_2 | trained | +0.013 [−1.149, +0.221] | 0.0403 | 0.282 | 0.949 |
+| K=3 Dirichlet | client_0 | trained | −0.243 [−1.618, +0.037] | 0.0452 | 0.102 | 1.046 |
+| K=3 Dirichlet | client_1 | trained | −6.582 [−36.318, −1.799] | 0.1116 | 4.5e-5 | 12.616 |
+| K=3 Dirichlet | client_2 | trained | +0.114 [−2.059, +0.461] | 0.0382 | 1.1e-5 | 0.957 |
+
+### Classification detail
+
+- **Window accuracy:**
+  - centralized 0.9967 / 1.0000 / 0.9967 (mean 0.9978 ± 0.0019);
+  - K=2 IID FL 0.9967 / 1.0000 / 0.9967;
+  - K=2 natural FL 0.9902 / 0.9772 / 0.9935 (mean 0.9870 ± 0.0086);
+  - K=3 ρ = 1.0 / 0.375 / 0: 0.9967 / 0.9674 / 0.9772;
+  - Dirichlet 0.8274.
+- **Run level:** majority vote and mean probability give the same run counts everywhere
+  except Dirichlet FL, where both are 22/28 and macro-F1 is 0.641. Every other FL or
+  centralized model has run macro-F1 1.000.
+- **Dirichlet FL:**
+  - by source: Test_2 13/13 [0.772, 1.000]; 20251124 9/15 [0.357, 0.802];
+  - all 6 errors are whole subjects: 005 → 003 (3/3 runs) and 007 → 004 (3/3 runs);
+  - at split seed 4601, 005's runs sit only on client_0 (13 of its 21 runs) and 007's
+    only on client_1 (11 of 15). client_2 holds 76 of the 112 training runs.
+- **Local-only by subject:**
+  - **K=2 natural, client_0 (Test_2 only):** every Test_2 run correct (13/13), and every
+    20251124 run, 003 included, labelled 002.
+  - **K=2 natural, client_1 (20251124 only):** every 20251124 run correct (15/15). On
+    Test_2: 001 → 008 (4/4), 002 → 007 (4) / 004 (1), 003 → 003 (3/4).
+  - **Dirichlet:** client_2 is 22/28, missing 005 and 007. client_0 is 10/28. client_1 is
+    6/28 and labels every Test_2 run 004.
+
+### Source probe (§2 R4 item 2): `source_probe/seed4601`
+
+This is the subject classifier's recipe with label = source (2 classes), on the same
+windows and split.
+
+| | Result |
+|---|---|
+| Test window accuracy | **1.000**, on no_walking (ambient) windows (69) and walking windows (238) alike |
+| Run level | 28/28 [0.879, 1.000]; Test_2 13/13 [0.772, 1.000]; 20251124 15/15 [0.796, 1.000] |
+| Majority class of test windows | 0.537 |
+| Final train accuracy | 1.000 |
+
+The two collection campaigns are perfectly separable, including on windows with nobody
+walking. In the 1-epoch smoke run, test accuracy was already 1.000.
+
+### Subject-003 cross-session control (§2 R4 item 3): `subject003_control/seed4601`
+
+- **Training:** walking windows from the 52 Test_2 canonical-train runs (431 windows),
+  3 classes (001, 002, 003).
+- **Normalization:** from those windows only.
+- **Final train accuracy:** 1.000.
+
+| Set | Runs | Windows | Majority-vote result | Predicted labels by window |
+|---|---|---|---|---|
+| In-session (Test_2 canonical test) | 13 | 103 | **13/13** [0.772, 1.000]; mean probability 13/13 | each subject 1.00 to its own label |
+| **Cross-session: 003 in 20251124** | 15 | 142 | **0/15 [0.000, 0.204]**; mean probability 0/15 | 002 0.93, 001 0.07, **003 0.00**. Runs: 14 → 002, 1 → 001. |
+| Negative control 004 | 15 | 127 | not in the classes | 002 1.00 (15 runs → 002) |
+| Negative control 005 | 16 | 134 | not in the classes | 002 0.88, 001 0.12 (15 → 002, 1 → 001) |
+| Negative control 007 | 14 | 125 | not in the classes | 002 1.00 (14 → 002) |
+| Negative control 008 | 15 | 142 | not in the classes | 002 0.94, 001 0.06 (15 → 002) |
+
+Trained on Test_2 alone, the model labels 003's 20251124 recordings exactly as it labels
+four people it has never seen. Not one 20251124 window is predicted 003.
+
+**The free first look**, from the existing predictions (`derived/cross_session_free_breakdown.csv`):
+- Every centralized and FL model, all seeds and all conditions including Dirichlet,
+  classifies 003's test runs correctly in both sources: Test_2 4/4 and 20251124 3/3.
+- Those models saw 003 from both sessions in training, which is why the runbook calls
+  this look not conclusive.
+
+**A reverse-direction look, unplanned, from the existing local-only K=2 natural run.**
+Recorded here because it bears on the control:
+- **client_1** trained only on 20251124 (subjects 003, 004, 005, 007, 008). It labels
+  003's Test_2 runs **003 in 3 of 4 by majority vote** (Wilson [0.301, 0.954]), but
+  **2 of 4 by mean probability** ([0.150, 0.850]).
+- **client_0** trained only on Test_2. It labels every 20251124 run 002, 003 included,
+  as the control does.
+- These are n = 4 runs, from a model with 5 subject classes rather than 3. This is a
+  single observation and not a planned control.
+
+**Negative control for the reverse direction.** client_1's predictions on the Test_2
+canonical-test runs, walking windows only. 001 and 002 are not among its training
+subjects. Counted from its saved `test_predictions.csv` and `run_level_predictions.csv`:
+
+| Test_2 subject | Runs | Windows | Window-level predicted labels | Runs, majority vote | Runs, mean probability |
+|---|---|---|---|---|---|
+| 001 (unseen) | 4 | 32 | 008 1.000 (32) | 4 → 008 | 4 → 008 |
+| 002 (unseen) | 5 | 43 | 007 0.698 (30), 004 0.279 (12), **003 0.023 (1)** | 4 → 007, 1 → 004 | 4 → 007, 1 → 004 |
+| **003** (seen in 20251124) | 4 | 28 | **003 0.571 (16)**, 004 0.429 (12) | **3 → 003**, 1 → 004 | **2 → 003**, 2 → 004 |
+
+**Per run for 003** (windows predicted 003 / total; majority; mean probability):
+- `test_2:003:006`: 5/7; 003; 003 (0.79)
+- `test_2:003:011`: 4/7; 003; **004** (0.51)
+- `test_2:003:013`: 6/8; 003; 003 (0.77)
+- `test_2:003:018`: 1/6; 004; 004 (0.71)
+
+No majority vote was tied.
+
+**What the table shows:**
+- **"003" is predicted almost only on 003's own windows:** 16 of 28 of them. Among the
+  75 windows of the two unseen subjects there is 1 window (002) and no run.
+- **The unseen subjects aren't pooled onto one label.** 001 maps entirely to 008 and 002
+  mostly to 007, not to 003 and not to a single session label. That differs from the
+  forward control, where all four unseen 20251124 subjects and 003 went to 002.
+- **The 003 signal is weak.** Only 57% of 003's windows, 3/4 runs by vote and 2/4 by mean
+  probability.
+
+So in this direction the "003" label isn't simply what the model gives an unfamiliar
+Test_2 recording. This is still one local-only model, 4 runs, unplanned, with wide
+intervals, and it isn't a replacement for the planned control. The two directions also
+differ in classes (5 vs 3), training size, and whether no_walking windows were in
+training (yes for the local-only model, no for the control).
+
+### Gate outcomes
+
+| | Count | Models |
+|---|---|---|
+| **Collapsed** | 2 | FL K=2 natural seed 4603 (spread 1.3e-10, 205 distinct values); FL K=3 ρ=0 (spread 8.3e-11, 19 distinct values) |
+| **Did not train** | 2 | FL K=3 ρ=0.375 (global-train MSE 0.991, spread 0.064); local-only K=3 ρ=0 client_0 (own-data 0.980, spread 0.035) |
+| **Trained** | all other regression models | 6 centralized; FL: K=2 IID ×3, K=2 natural ×2, K=3 ρ=1.0, Dirichlet; local-only: 15 of 16 clients |
+
+- Per-seed reporting applies to one group: FL K=2 natural regression, "per seed; 1 of 3
+  seeds collapsed".
+- Every other multi-seed group is "mean ± std; 3 of 3 seeds trained" (regression) or
+  plain mean ± std (classification).
+- **FLAT** flags: the 3 FL regression runs above that did not train or collapsed, and
+  local-only K=3 ρ=0 regression. **No classification run was flagged FLAT.**
+- **Job statuses:** 36 `completed`, 3 `failed_detector` (the three FL regression runs
+  above), 1 `completed_with_failed_clients` (local-only K=3 ρ=0 regression),
+  3 `reused_canonical`.
+- **31 Oct fallback:** not triggered; nothing was dropped.
+
+**Numbers that moved:** none of the earlier reported numbers. Everything above is new S5
+output; the reproductions are noted under the regression detail.
+
+---
+
 ## Session 5 (amendment 2) — Local-only trained gate, three outcome labels (2026-10-21)
 
 Night 2 (2026-10-20 23:03 → 2026-10-21 05:03) brought the queue to 33 of 43 jobs. Two
