@@ -432,33 +432,35 @@ def test_spread_rule_threshold_is_relative_to_the_target() -> None:
 def test_seed_reporting_rule() -> None:
     from redo_by_sara.s5_queue import seed_reporting
 
-    natural = [{"skill": -0.207, "collapsed": False}, {"skill": -0.123, "collapsed": False},
-               {"skill": -0.000001, "collapsed": True}]
+    natural = [{"skill": -0.207, "training_outcome": "trained"}, {"skill": -0.123, "training_outcome": "trained"},
+               {"skill": -0.000001, "training_outcome": "collapsed"}]
     assert seed_reporting(natural) == "per seed; 1 of 3 seeds collapsed"
-    assert seed_reporting(natural[:2]) == "mean ± std over 2 seeds; 0 of 2 seeds collapsed"
+    assert seed_reporting(natural[:2]) == "mean ± std over 2 seeds; 2 of 2 seeds trained"
+    mixed = natural[:2] + [{"skill": 0.04, "training_outcome": "did not train"}]
+    assert seed_reporting(mixed) == "per seed; 1 of 3 seeds did not train"
     assert seed_reporting([{"window_accuracy": 1.0}, {"window_accuracy": 0.99}]) == "mean ± std over 2 seeds"
     # why: the mean of the three would sit above both trained seeds
     assert np.mean([m["skill"] for m in natural]) > max(m["skill"] for m in natural[:2])
 
 
-def test_seed_aggregates_report_a_collapsed_group_per_seed(tmp_path: Path) -> None:
+def test_seed_aggregates_report_an_untrained_group_per_seed(tmp_path: Path) -> None:
     from redo_by_sara.s5_queue import rebuild_index
 
     jobs = build_jobs()
-    skills = {("k2_natural", 4601): (-0.207, False), ("k2_natural", 4602): (-0.123, False),
-              ("k2_natural", 4603): (-0.000001, True), ("k2_iid", 4601): (0.089, False),
-              ("k2_iid", 4602): (0.150, False), ("k2_iid", 4603): (0.277, False)}
+    skills = {("k2_natural", 4601): (-0.207, "trained"), ("k2_natural", 4602): (-0.123, "trained"),
+              ("k2_natural", 4603): (-0.000001, "collapsed"), ("k2_iid", 4601): (0.089, "trained"),
+              ("k2_iid", 4602): (0.150, "trained"), ("k2_iid", 4603): (0.277, "trained")}
     for job in jobs:
         key = (job.condition, job.seed)
         if job.family == "fl" and job.task == "regression" and key in skills:
-            skill, collapsed = skills[key]
-            _record(tmp_path / job.job_id, outcome="failed_detector" if collapsed else "completed",
-                    wall_seconds=60.0, smoke=False, flat=collapsed,
-                    metrics={"skill": skill, "model_rmse_mps": 0.04, "collapsed": collapsed})
+            skill, label = skills[key]
+            _record(tmp_path / job.job_id, outcome="completed" if label == "trained" else "failed_detector",
+                    wall_seconds=60.0, smoke=False, flat=label != "trained",
+                    metrics={"skill": skill, "model_rmse_mps": 0.04, "training_outcome": label})
     index = {row["job_id"]: row for row in rebuild_index(jobs, tmp_path)}
-    assert index["fl/k2_natural/seed4603/regression"]["collapsed"] == "yes"
+    assert index["fl/k2_natural/seed4603/regression"]["training_outcome"] == "collapsed"
     assert index["fl/k2_natural/seed4601/regression"]["seed_reporting"] == "per seed; 1 of 3 seeds collapsed"
-    assert index["fl/k2_iid/seed4601/regression"]["seed_reporting"] == "mean ± std over 3 seeds; 0 of 3 seeds collapsed"
+    assert index["fl/k2_iid/seed4601/regression"]["seed_reporting"] == "mean ± std over 3 seeds; 3 of 3 seeds trained"
 
     import csv
 
@@ -466,5 +468,113 @@ def test_seed_aggregates_report_a_collapsed_group_per_seed(tmp_path: Path) -> No
     natural, iid = rows["k2_natural"], rows["k2_iid"]
     assert natural["reporting"] == "per seed; 1 of 3 seeds collapsed"
     assert not natural.get("skill_mean") and float(natural["skill_seed4601"]) == -0.207
-    assert natural["collapsed_seed4603"] == "True"
+    assert natural["training_outcome_seed4603"] == "collapsed"
     assert float(iid["skill_mean"]) == pytest.approx((0.089 + 0.150 + 0.277) / 3)
+
+
+# ------------------------------------------------------------------ outcome labels and local-only gates (2026-10-21)
+
+JOB14 = json.loads((ROOT / "test_fixtures/s5_local_only_k2_natural_seed4601_regression.json").read_text())
+RHO0375 = json.loads((ROOT / "test_fixtures/s5_k3_rho0.375_seed4601_regression.json").read_text())
+
+
+def _health(model: dict, final_standardized_mse: float | None) -> dict:
+    from redo_by_sara.guardrails import check_regression_health
+
+    return check_regression_health(
+        actual=model["run_actual_speed_mps"], predicted=model["run_predicted_speed_mps"],
+        baseline=model["run_baseline_mps"], final_standardized_mse=final_standardized_mse,
+        enforced_gates=(), run_label="fixture", model_output=model["window_predicted_residual_mps"],
+        model_output_name="window predicted residual",
+    )
+
+
+def test_three_outcome_labels_on_real_runs() -> None:
+    from redo_by_sara.guardrails import training_outcome
+
+    assert training_outcome(_health_4603()) == "collapsed"
+    rho = _health(RHO0375, RHO0375["final_standardized_mse"])
+    assert RHO0375["final_standardized_mse"] == pytest.approx(0.99124, abs=1e-5)
+    assert rho["gates"]["degeneracy"]["passed"] is True and rho["relative_output_spread"] > 0.05
+    assert training_outcome(rho) == "did not train"
+
+
+def test_own_data_mse_is_relative_to_the_clients_zero_residual_start() -> None:
+    from redo_by_sara.guardrails import own_data_standardized_mse
+
+    rows = [{"round": "2", "local_start_standardized_mse": 0.4, "local_end_standardized_mse": 0.3},
+            {"round": "1", "local_start_standardized_mse": 0.5, "local_end_standardized_mse": 0.45}]
+    assert own_data_standardized_mse(rows) == pytest.approx(0.3 / 0.5)  # last end / round-1 start
+    with pytest.raises(ValueError):
+        own_data_standardized_mse(rows[:1] and [rows[0]])  # no round 1
+
+
+def test_job14_both_local_only_clients_trained_on_their_own_data() -> None:
+    from redo_by_sara.guardrails import MAXIMUM_STANDARDIZED_MSE, own_data_standardized_mse, training_outcome
+
+    own = {c: own_data_standardized_mse(m["local_client_fit_history"]) for c, m in JOB14["clients"].items()}
+    assert own["client_0"] < 1e-5 and own["client_1"] < 1e-5
+    # The old basis: client_1's global-train MSE fails, although it fit its own data.
+    assert JOB14["clients"]["client_1"]["global_train_standardized_mse"] > 3.0
+    assert JOB14["clients"]["client_0"]["global_train_standardized_mse"] < MAXIMUM_STANDARDIZED_MSE
+    # A bare 0.95 on the raw own-data value would be wrong: client_0's untrained start
+    # (0.566) is already below it, client_1's (1.376) above.
+    starts = {c: m["local_client_fit_history"][0]["local_start_standardized_mse"] for c, m in JOB14["clients"].items()}
+    assert starts["client_0"] < MAXIMUM_STANDARDIZED_MSE < starts["client_1"]
+    for client, model in JOB14["clients"].items():
+        old = _health(model, model["global_train_standardized_mse"])
+        new = _health(model, own[client])
+        assert training_outcome(new) == "trained", client
+        if client == "client_1":
+            assert training_outcome(old) == "did not train"
+
+
+def test_local_only_aggregation_counts_failed_clients(tmp_path: Path) -> None:
+    from redo_by_sara.s5_queue import collect_metrics
+
+    job = next(j for j in build_jobs() if j.job_id == "local_only/k2_natural/seed4601/regression")
+    result = job.result_dir(tmp_path)
+
+    def write_client(name: str, model: dict, history: list[dict]) -> None:
+        import csv
+
+        d = result / name
+        d.mkdir(parents=True)
+        runs = [{"actual_speed_mps": a, "predicted_speed_mps": p, "source_subject_train_mean_mps": b,
+                 "run_uid": f"r{i}", "source_id": "s1" if i % 2 else "s2", "subject_id": f"{i % 3}"}
+                for i, (a, p, b) in enumerate(zip(model["run_actual_speed_mps"], model["run_predicted_speed_mps"], model["run_baseline_mps"]))]
+        for filename, rows in (("test_run_predictions.csv", runs),
+                               ("test_window_predictions.csv", [{"predicted_residual_mps": v} for v in model["window_predicted_residual_mps"]]),
+                               ("local_client_fit_history.csv", history),
+                               ("global_train_history.csv", [{"round": 60, "global_train_standardized_mse": model["global_train_standardized_mse"]}])):
+            with (d / filename).open("w", newline="") as handle:
+                writer = csv.DictWriter(handle, fieldnames=list(rows[0]))
+                writer.writeheader()
+                writer.writerows(rows)
+        from redo_by_sara.regression_metrics import report_from_run_rows
+
+        (d / "training_summary.json").write_text(json.dumps({
+            "regression_report": report_from_run_rows(runs, "source_subject_train_mean_mps"),
+            "degenerate_model_check": {"gates": {"degeneracy": {"passed": True}}},
+        }))
+
+    clients = JOB14["clients"]
+    write_client("client_0", clients["client_0"], clients["client_0"]["local_client_fit_history"])
+    write_client("client_1", clients["client_1"], clients["client_1"]["local_client_fit_history"])
+    collected = collect_metrics(job, tmp_path, "completed", lambda: None)
+    m = collected["metrics"]
+    assert m["training_outcome"] == "trained" and m["clients_failed"] == "0 of 2 clients failed"
+    assert m["num_clients_in_mean"] == 2 and collected["flat"] is False
+
+    # A client that does not train on its own data is excluded from the mean and counted.
+    zero = clients["client_0"]["local_client_fit_history"][0]["local_start_standardized_mse"]
+    flat_history = [dict(row, local_start_standardized_mse=zero, local_end_standardized_mse=zero)
+                    for row in clients["client_0"]["local_client_fit_history"]]
+    import shutil
+
+    shutil.rmtree(result / "client_0")
+    write_client("client_0", clients["client_0"], flat_history)
+    m = collect_metrics(job, tmp_path, "completed", lambda: None)["metrics"]
+    assert m["clients_failed"] == "1 of 2 clients failed" and m["num_clients_in_mean"] == 1
+    assert json.loads(m["client_outcomes"]) == {"client_0": "did not train", "client_1": "trained"}
+    assert m["skill_mean"] == pytest.approx(collect_metrics(job, tmp_path, "completed", lambda: None)["per_client"]["client_1"]["skill"])

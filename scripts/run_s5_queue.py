@@ -357,16 +357,25 @@ def main() -> None:
         updated = recompute_metrics(queue.all_jobs, queue.root, queue.samples)
         rebuild_index(queue.all_jobs, queue.root)
         queue.log(f"DERIVED-ONLY: recomputed metrics for {len(updated)} finished job(s)")
-        print(f"{'job':<46} {'outcome':<17} {'spread':>9} {'degen@run':>9} {'degen':>6} {'trained':>7} collapsed")
-        for job, record in updated:
+        print(f"{'regression model':<56} {'spread':>9} {'gated MSE':>10} {'global MSE':>10}  label before -> now")
+        changed = []
+        for job, before, record in updated:
             m = record.get("metrics") or {}
             for client, cm in ([("", m)] if job.family != "local_only" else sorted((record.get("per_client") or {}).items())):
-                if "gate_degeneracy" not in cm:
+                if "training_outcome" not in cm:
                     continue
-                label = job.job_id + (f" [{client}]" if client else "")
-                spread = cm["relative_output_spread"]
-                print(f"{label:<46} {record['outcome']:<17} {spread:>9.2e} {str(cm['gate_degeneracy_at_run']):>9} "
-                      f"{str(cm['gate_degeneracy']):>6} {str(cm['gate_trained']):>7} {cm['collapsed']}")
+                name = job.job_id + (f" [{client}]" if client else "")
+                old, new = before.get(client, ""), cm["training_outcome"]
+                gated, global_mse = cm["trained_gate_mse"], cm["global_train_standardized_mse"]
+                print(f"{name:<56} {cm['relative_output_spread']:>9.2e} "
+                      f"{'n/a' if gated is None else format(gated, '.3g'):>10} "
+                      f"{'n/a' if global_mse is None else format(global_mse, '.3g'):>10}  "
+                      f"{old or '-'} -> {new}{'   CHANGED' if old != new else ''}")
+                if old != new:
+                    changed.append(f"{name}: {old or '-'} -> {new}")
+            if record.get("outcome_at_run"):
+                changed.append(f"{job.job_id}: outcome {record['outcome_at_run']} -> {record['outcome']}")
+        print("\nLabel/outcome changes: " + ("none" if not changed else "\n  " + "\n  ".join(changed)))
         print(f"Recomputed {len(updated)} job(s); rebuilt {queue.root / 'results_index.csv'} and {queue.root / 'derived'}", flush=True)
         return
     signal.signal(signal.SIGINT, _raise_interrupt)

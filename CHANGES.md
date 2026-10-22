@@ -4,6 +4,107 @@ What changed, and every number that moved as a result. Newest first.
 
 ---
 
+## Session 5 (amendment 2) — Local-only trained gate, three outcome labels (2026-10-21)
+
+Night 2 (2026-10-20 23:03 → 2026-10-21 05:03) brought the queue to 33 of 43 jobs. Two
+corrections followed, both PI-approved. **They change labels and gates only; no number
+moved.** Of the 613 numeric metric values in the re-derived job records, every one is
+identical to its value before re-derivation.
+
+### 1. Local-only clients are judged "trained" on their own training data
+
+**The defect:** a local-only client was gated on the *global-train* standardized MSE. That
+value covers every client's training runs, most of which a local-only client never sees,
+so it measures generalization to other silos, not whether the client trained.
+
+Job 14 (`local_only/k2_natural/seed4601/regression`) shows it:
+
+| Client | Global-train standardized MSE | Old gate | Own data |
+|---|---|---|---|
+| client_1 (20251124) | 3.235 | "failed" | own-data loss 1.3765 → 0.0000 |
+| client_0 (Test_2) | 0.827 | passed | — |
+
+The runner therefore averaged over client_0 alone.
+
+**Rule** (`guardrails.own_data_standardized_mse`):
+
+    own-data standardized MSE = own-data MSE at the end of the last round
+                                / own-data MSE at the start of round 1      < 0.95
+
+- **Why it is built this way:** the residual model's last layer is zero-initialized, so
+  the round-1 start is exactly the client's own "predict zero residual" MSE. 1.0 keeps
+  that meaning, and the threshold stays at `MAXIMUM_STANDARDIZED_MSE`. Both losses are
+  measured by the client on its own runs, with its channel mask.
+- **Why not a bare 0.95 on the raw own-data value:** client_0's untrained start (0.566)
+  is already below 0.95, and client_1's (1.376) is above it.
+- **What is still enforced and reported:** the output-spread degeneracy check is still
+  enforced. The global-train MSE is reported per client and not gated.
+- **Federated and centralized gates are unchanged.**
+
+**In the runner** (`_finalize_regression`, `run_local_only_experiment`):
+- Local-only clients pass the own-data value to the trained gate and record
+  `trained_gate_basis`.
+- `local_only_summary.json` gains `clients_failed` ("k of n clients failed"), a
+  `training_outcome` per client, and the gate basis.
+- mean ± std covers every client that passes the gates.
+
+**In the queue:**
+- Local-only metrics are mean ± std over the trained clients, plus `num_clients_in_mean`,
+  `clients_failed` and `client_outcomes`.
+- `--derived-only` rewrites a local-only regression `local_only_summary.json` in the
+  runner's layout, so the two agree. The run-time file is kept once as
+  `local_only_summary.at_run.json`.
+- A local-only job's outcome now follows its re-derived client gates. The run-time value
+  is kept as `outcome_at_run`.
+
+### 2. Three outcome labels replace "collapsed"
+
+`guardrails.training_outcome` assigns one label per regression model, from the current
+detector re-applied to the saved predictions:
+
+| Label | Meaning |
+|---|---|
+| `collapsed` | fails degeneracy: the output-spread check |
+| `did not train` | has spread, but fails `trained` |
+| `trained` | passes both |
+
+- The absolute path has no trained gate, so it is labelled on degeneracy alone.
+- **Index and tables:** `results_index.csv` gets a `training_outcome` column, replacing
+  `collapsed`. `derived/seed_aggregates.csv` gets `training_outcome_seed<N>`.
+- **Per-seed reporting:** any seed that is not `trained` puts its group on per-seed
+  reporting ("k of n seeds collapsed" / "… did not train").
+- **FLAT** now means "not trained".
+
+### Re-derivation (`--derived-only`, no retraining): labels that changed
+
+| Model | Before | Now |
+|---|---|---|
+| `local_only/k2_natural/seed4601/regression` client_1 | collapsed (global-train gate) | **trained** (own-data 2.0e-6) |
+| `local_only/k2_natural/seed4601/regression`, the job | `completed_with_failed_clients` | **`completed`**: 0 of 2 clients failed, both clients in the mean, skill −0.726 ± 0.869 |
+| `fl/k3_rho0.375/seed4601/regression` | collapsed | **did not train**: spread 0.064, global-train standardized MSE 0.991 |
+
+- **Unchanged:** `fl/k3_rho0/seed4601/regression` and `fl/k2_natural/seed4603/regression`
+  stay **collapsed** (spreads 8.3e-11 and 1.3e-10). The other 15 regression models stay
+  `trained`.
+- **Job 14's skill mean doesn't change:** the queue's figure already included both
+  clients. Only the runner summary's mean changes, from client_0 alone to both clients.
+- **The spread rule still holds:** the S5 centralized residual seeds sit at spread
+  ratios 0.209 (4602) and 0.116 (4603). These are lower than the 0.386 cited when the
+  1e-3 threshold was fixed, but still about 116× above it.
+- **Tests:**
+  - **Fixtures:** `test_fixtures/s5_local_only_k2_natural_seed4601_regression.json`
+    (job 14, both clients) and `test_fixtures/s5_k3_rho0.375_seed4601_regression.json`,
+    both copied verbatim from the gitignored run folders.
+  - **Covered:**
+    - the three labels on real runs (4603 collapsed, ρ=0.375 did not train);
+    - the own-data rule and why a bare 0.95 fails;
+    - job 14 is trained under the new rule, and client_1 did not train under the old one;
+    - local-only aggregation and "k of n clients failed".
+- `pytest` (full suite, data present): **175 passed, 1 skipped** (cudnn, macOS), in
+  5 min 49 s.
+
+---
+
 ## Session 5 (amendment) — Seed-4603 collapse, per-seed reporting, degeneracy spread rule (2026-10-20)
 
 The first queue night (2026-10-19 20:56 → 2026-10-20 05:14, stopped by `--stop-by 06:00`)

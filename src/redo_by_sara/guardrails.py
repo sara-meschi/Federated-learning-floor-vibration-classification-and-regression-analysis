@@ -26,7 +26,7 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Iterable, Sequence
+from typing import Any, Callable, Iterable, Mapping, Sequence
 
 import numpy as np
 import torch
@@ -454,6 +454,46 @@ def check_regression_health(
         flush=True,
     )
     return report
+
+
+def own_data_standardized_mse(client_rows: Sequence[Mapping[str, Any]]) -> float:
+    """The "trained" basis for a **local-only** client (S5 amendment, 2026-10-21).
+
+    A local-only client trains on its own partition only, so the global-train
+    standardized MSE (over every client's training runs) measures how it generalizes to
+    data it never saw, not whether it trained. Instead: the client's own-data MSE at the
+    end of its last round divided by its own-data MSE at the start of round 1. The
+    residual model's last layer is zero-initialized, so the round-1 start is exactly the
+    client's own "predict zero residual" MSE, and 1.0 keeps that meaning: the ratio is
+    gated with the same ``MAXIMUM_STANDARDIZED_MSE`` as the global value. Both losses
+    are measured by the client on its own runs (unshuffled, with its channel mask).
+    """
+
+    rows = sorted(client_rows, key=lambda row: int(float(row["round"])))
+    zero_residual = float(rows[0]["local_start_standardized_mse"])
+    if int(float(rows[0]["round"])) != 1 or zero_residual <= 0.0:
+        raise ValueError("Need round 1 with a positive own-data start loss.")
+    return float(rows[-1]["local_end_standardized_mse"]) / zero_residual
+
+
+TRAINING_OUTCOMES = ("trained", "did not train", "collapsed")
+
+
+def training_outcome(report: Mapping[str, Any]) -> str:
+    """One label per regression model from its detector report (S5 amendment).
+
+    ``collapsed``: fails ``degeneracy`` (the outputs carry no spread: a constant
+    predictor). ``did not train``: has spread but fails ``trained`` (never got below 0.95
+    of the predict-zero MSE). ``trained``: passes both. A path with no standardized MSE
+    (absolute speed) has no trained gate and is labelled on degeneracy alone.
+    """
+
+    gates = report["gates"]
+    if not gates[GATE_DEGENERACY]["passed"]:
+        return "collapsed"
+    if report.get("final_standardized_mse") is not None and not gates[GATE_TRAINED]["passed"]:
+        return "did not train"
+    return "trained"
 
 
 def _summary_line(report: dict[str, Any]) -> str:

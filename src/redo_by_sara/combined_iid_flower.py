@@ -38,9 +38,11 @@ from .guardrails import (
     assert_determinism_flags,
     assert_split_integrity,
     check_regression_health,
+    own_data_standardized_mse,
     seeding_record,
     resolve_seeds,
     set_random_seeds,
+    training_outcome,
 )
 from .models import SimpleCNN1D
 from .parameters import get_parameters, set_parameters
@@ -1834,12 +1836,35 @@ def _finalize_regression(
     # run cannot be reported as a near-match to centralized (R1). S4/S5 policy:
     # degeneracy and "trained" are enforced; skill is reported, not enforced, because
     # enforcing it across seeds would drop negative-skill seeds and bias the mean.
+    # A local-only client is judged "trained" on its own training data (S5 amendment):
+    # its global-train MSE includes other clients' runs it never saw, so it is reported
+    # but not gated. Federated runs keep the global-train gate.
+    local_only = config.get("run_mode") == "local_only"
+    gated_mse = (
+        own_data_standardized_mse(client_rows)
+        if local_only
+        else float(final_history["global_train_standardized_mse"])
+    )
+    trained_gate_basis = (
+        {
+            "basis": (
+                "local-only: the client's own training data; final own-data MSE / its "
+                "round-1 own-data MSE (zero-initialized output = predict zero residual)"
+            ),
+            "own_data_standardized_mse": gated_mse,
+            "global_train_standardized_mse_reported_not_gated": float(
+                final_history["global_train_standardized_mse"]
+            ),
+        }
+        if local_only
+        else None
+    )
     try:
         health = check_regression_health(
             actual=[row["actual_speed_mps"] for row in run_rows],
             predicted=[row["predicted_speed_mps"] for row in run_rows],
             baseline=[row["source_subject_train_mean_mps"] for row in run_rows],
-            final_standardized_mse=float(final_history["global_train_standardized_mse"]),
+            final_standardized_mse=gated_mse,
             enforced_gates=("degeneracy", "trained"),
             run_label=(
                 f"combined_{condition_label(config)}"
@@ -1855,6 +1880,8 @@ def _finalize_regression(
     except DegenerateModelError as error:
         # No training_summary.json is written for a failed run, so it cannot be mistaken
         # for a result. The failure itself is recorded: a sweep reports its failures.
+        if trained_gate_basis is not None and error.report is not None:
+            error.report["trained_gate_basis"] = trained_gate_basis
         (output_dir / "degenerate_model_check_FAILED.json").write_text(
             json.dumps(
                 {
@@ -1876,6 +1903,8 @@ def _finalize_regression(
     # Window-level distinctness is the sharper diagnostic: the collapse produced one
     # distinct predicted residual across all 238 test windows, which the 28 run-level
     # rows can mask because they differ by their per-subject baselines.
+    if trained_gate_basis is not None:
+        health["trained_gate_basis"] = trained_gate_basis
     health["window_level"] = {
         "num_predictions": len(window_rows),
         "distinct_predicted_residual_mps": len(
@@ -2356,6 +2385,7 @@ def run_local_only_experiment(
                 overall = summary["regression_report"]["overall"]
                 per_client[client_id] = {
                     "status": "completed",
+                    "training_outcome": training_outcome(summary["degenerate_model_check"]),
                     "num_training_units": units,
                     "skill": overall["skill"],
                     "skill_ci95": overall["skill_ci95"],
@@ -2368,7 +2398,11 @@ def run_local_only_experiment(
             # Recorded per client so the other clients still run; the run as a whole
             # still fails loudly below.
             failures[client_id] = str(error)
-            per_client[client_id] = {"status": "failed_detector", "message": str(error)}
+            per_client[client_id] = {
+                "status": "failed_detector",
+                "training_outcome": None if error.report is None else training_outcome(error.report),
+                "message": str(error),
+            }
 
     def mean_std(values: list[float]) -> dict[str, float | int]:
         array = np.asarray(values, dtype=np.float64)
@@ -2402,7 +2436,13 @@ def run_local_only_experiment(
         "per_client": per_client,
         "mean_std_over_completed_clients": aggregate,
         "failed_clients": sorted(failures),
+        "clients_failed": f"{len(failures)} of {len(per_client)} clients failed",
     }
+    if task == "regression":
+        local_summary["trained_gate_basis"] = (
+            "each client's own training data: final own-data MSE / its round-1 own-data "
+            "MSE < 0.95; global-train MSE reported per client, not gated"
+        )
     (task_root / "local_only_summary.json").write_text(json.dumps(local_summary, indent=2))
     if failures:
         raise DegenerateModelError(
