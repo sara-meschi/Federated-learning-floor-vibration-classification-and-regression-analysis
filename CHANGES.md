@@ -22,13 +22,32 @@ PI request: 4 new queue jobs, group 7. The only code change is the job list in
 - **Tests:** the job-matrix test literals become 47 jobs, 44 training jobs and group 7 = 4.
   New assertions pin group 7's composition and that jobs 1–43 are unchanged.
   `test_s5.py`: 35 passed.
+- **Ran 2026-10-22 on `716c6c7`,** in three `--stop-by` sessions (11:53–12:50,
+  13:32–15:10, 16:08–16:59). **47 of 47 jobs are terminal, none crashed**, and no group-7
+  run was flagged FLAT.
+  - **FL Dirichlet:** 56.9 min (4602) and 47.8 min (4603).
+  - **Local-only Dirichlet:** 50.0 min (4602) and 50.4 min (4603).
+- **Results:** the run-level outcome is identical across the 3 seeds. The results entry
+  below now reports Dirichlet classification over 3 seeds.
+
+  | | Seed 4601 | Seed 4602 | Seed 4603 | 3 seeds |
+  |---|---|---|---|---|
+  | FL, runs (Wilson) | 22/28 [0.605, 0.898] | 22/28 [0.605, 0.898] | 22/28 [0.605, 0.898] | — |
+  | FL, macro-F1 | 0.641 | 0.641 | 0.641 | — |
+  | FL, window accuracy | 0.8274 | 0.8241 | 0.8306 | 0.8274 ± 0.0033 |
+  | Local-only, mean run accuracy over clients | 0.452 ± 0.297 | 0.452 ± 0.297 | 0.452 ± 0.297 | — |
+  | Local-only, mean window accuracy over clients | 0.521 | 0.568 | 0.524 | 0.538 ± 0.026 |
+
+  - FL fails the same two whole subjects on every seed: 005 → 003 and 007 → 004.
+  - Local-only clients get 10, 6 and 22 of 28 runs on every seed.
 
 ---
 
 ## Session 5 — Results (2026-10-22)
 
-The S5 queue finished: **43 of 43 jobs terminal, none crashed**. It ran over three
-nights:
+The S5 queue finished: **43 of 43 jobs terminal, none crashed**. The 4 Dirichlet
+classification seed jobs added afterwards (amendment 3) bring it to 47 of 47. The main
+queue ran over three nights:
 
 | Night | Commit | Jobs |
 |---|---|---|
@@ -71,7 +90,7 @@ regression 32–38 min, centralized 7–12 min, the source probe 6.8 min and the
 | **K=3 ρ = 1.0** (= IID) | 28/28 [0.879, 1.000] | 1.000 ± 0.000. Each client 28/28. | +0.101 [−2.263, +0.480], trained | −0.125 ± 0.343, 0 of 3 clients failed |
 | **K=3 ρ = 0.375** | 28/28 [0.879, 1.000] | 0.976 ± 0.041. 28/28, 28/28, 26/28 [0.774, 0.980]. | +0.046 [−0.025, +0.077], **did not train** | −0.329 ± 0.389, 0 of 3 clients failed |
 | **K=3 ρ = 0** | 28/28 [0.879, 1.000] | 0.976 ± 0.021. 27/28 [0.823, 0.994], 28/28, 27/28. | −1.9e-4 [−4.8e-4, +7.9e-5], **collapsed** | −0.073 ± 0.122 over 2 clients; **1 of 3 clients failed** (client_0 did not train) |
-| **K=3 Dirichlet α = 0.1** | **22/28 [0.605, 0.898]** | **0.452 ± 0.297.** 10/28 [0.207, 0.542]; 6/28 [0.102, 0.395]; 22/28 [0.605, 0.898]. | −0.272 [−3.937, +0.258], trained | −2.237 ± 3.767, 0 of 3 clients failed |
+| **K=3 Dirichlet α = 0.1** (classification: 3 seeds; regression: seed 4601) | **22/28 [0.605, 0.898] on every seed** | **0.452 ± 0.297 on every seed.** Clients 10/28 [0.207, 0.542], 6/28 [0.102, 0.395] and 22/28 [0.605, 0.898] on each seed. | −0.272 [−3.937, +0.258], trained | −2.237 ± 3.767, 0 of 3 clients failed |
 
 What the table shows (description, not interpretation):
 - **Classification is at ceiling** (28/28) in every FL and centralized condition except
@@ -149,13 +168,16 @@ trained gate reads; "global" is reported, not gated.
   - K=2 IID FL 0.9967 / 1.0000 / 0.9967;
   - K=2 natural FL 0.9902 / 0.9772 / 0.9935 (mean 0.9870 ± 0.0086);
   - K=3 ρ = 1.0 / 0.375 / 0: 0.9967 / 0.9674 / 0.9772;
-  - Dirichlet 0.8274.
-- **Run level:** majority vote and mean probability give the same run counts everywhere
-  except Dirichlet FL, where both are 22/28 and macro-F1 is 0.641. Every other FL or
-  centralized model has run macro-F1 1.000.
-- **Dirichlet FL:**
+  - Dirichlet FL 0.8274 / 0.8241 / 0.8306 (mean 0.8274 ± 0.0033, seeds 4601/4602/4603);
+  - Dirichlet local-only, mean over clients: 0.5212 / 0.5679 / 0.5244 (0.5378 ± 0.0261).
+- **Run level:** majority vote and mean probability give the same run counts everywhere.
+  Every FL or centralized model has run macro-F1 1.000 except Dirichlet FL (0.641 on each
+  seed).
+- **Dirichlet FL, identical at run level on all 3 seeds:**
+  - 22/28 by majority vote and by mean probability;
   - by source: Test_2 13/13 [0.772, 1.000]; 20251124 9/15 [0.357, 0.802];
-  - all 6 errors are whole subjects: 005 → 003 (3/3 runs) and 007 → 004 (3/3 runs);
+  - the same 6 errors on every seed, all whole subjects: 005 → 003 (3/3 runs) and
+    007 → 004 (3/3 runs);
   - at split seed 4601, 005's runs sit only on client_0 (13 of its 21 runs) and 007's
     only on client_1 (11 of 15). client_2 holds 76 of the 112 training runs.
 - **Local-only by subject:**
@@ -163,8 +185,10 @@ trained gate reads; "global" is reported, not gated.
     20251124 run, 003 included, labelled 002.
   - **K=2 natural, client_1 (20251124 only):** every 20251124 run correct (15/15). On
     Test_2: 001 → 008 (4/4), 002 → 007 (4) / 004 (1), 003 → 003 (3/4).
-  - **Dirichlet:** client_2 is 22/28, missing 005 and 007. client_0 is 10/28. client_1 is
-    6/28 and labels every Test_2 run 004.
+  - **Dirichlet, seed 4601:** client_2 is 22/28, missing 005 and 007. client_0 is 10/28.
+    client_1 is 6/28 and labels every Test_2 run 004. Seeds 4602 and 4603 give the same
+    run counts per client (10, 6, 22). Client window accuracies differ slightly by seed:
+    client_1 0.257 / 0.394 / 0.270.
 
 ### Source probe (§2 R4 item 2): `source_probe/seed4601`
 

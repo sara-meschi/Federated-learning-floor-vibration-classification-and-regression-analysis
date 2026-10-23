@@ -44,3 +44,10 @@
 [10-22 04:29] 42/43 local_only/k3_dirichlet0.1/seed4601/classification completed 45.3 min | 3 clients: run acc (vote) 0.452 ± 0.297, window acc 0.521 | 5.9 h elapsed, ~1.2 h left
 [10-22 05:02] 43/43 local_only/k3_dirichlet0.1/seed4601/regression completed 33.5 min | 3 of 3 clients in mean: skill -2.237 ± 3.767 | 0 of 3 clients failed | {"client_0": "trained", "client_1": "trained", "client_2": "trained"} | 6.4 h elapsed, ~0.0 h left
 [10-22 05:02] QUEUE END: 43/43 terminal; crashed (re-run on restart): none
+[10-22 12:50] 44/47 fl/k3_dirichlet0.1/seed4602/classification completed 56.9 min | window acc 0.824 | run acc (vote) 22/28 [0.60, 0.90] | 0.9 h elapsed, ~2.5 h left
+[10-22 12:50] STOP-BY 10-22 13:35: not starting fl/k3_dirichlet0.1/seed4603/classification (estimate 57 min x 1.10 would end 13:52). Skipped this session: 3 job(s), ~2.5 h. Next in line: fl/k3_dirichlet0.1/seed4603/classification.
+[10-22 14:20] 45/47 fl/k3_dirichlet0.1/seed4603/classification completed 47.8 min | window acc 0.831 | run acc (vote) 22/28 [0.60, 0.90] | 0.8 h elapsed, ~1.5 h left
+[10-22 15:10] 46/47 local_only/k3_dirichlet0.1/seed4602/classification completed 50.0 min | 3 clients: run acc (vote) 0.452 ± 0.297, window acc 0.568 | 1.6 h elapsed, ~0.8 h left
+[10-22 15:10] STOP-BY 10-22 16:00: not starting local_only/k3_dirichlet0.1/seed4603/classification (estimate 50 min x 1.10 would end 16:05). Skipped this session: 1 job(s), ~0.8 h. Next in line: local_only/k3_dirichlet0.1/seed4603/classification.
+[10-22 16:59] 47/47 local_only/k3_dirichlet0.1/seed4603/classification completed 50.4 min | 3 clients: run acc (vote) 0.452 ± 0.297, window acc 0.524 | 0.8 h elapsed, ~0.0 h left
+[10-22 16:59] QUEUE END: 47/47 terminal; crashed (re-run on restart): none
