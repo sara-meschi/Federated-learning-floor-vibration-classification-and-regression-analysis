@@ -95,9 +95,15 @@ regression 32–38 min, centralized 7–12 min, the source probe 6.8 min and the
 What the table shows (description, not interpretation):
 - **Classification is at ceiling** (28/28) in every FL and centralized condition except
   Dirichlet. Local-only falls below FL under natural K=2 and Dirichlet.
-- **No regression skill interval excludes zero in the positive direction.** Every FL
-  regression run that trained has a CI containing 0. The local-only means are at or
-  below 0.
+- **No regression model shows positive skill distinguishable from zero; some intervals
+  lie entirely below zero.** No overall interval has its lower bound above 0. Entirely
+  below zero:
+  - the three centralized absolute runs (overall);
+  - the local-only K=2 IID client_1, K=3 ρ = 0.375 client_0, K=3 ρ = 0 client_0 and
+    K=3 Dirichlet client_1 (overall);
+  - several per-source Test_2 intervals (see the regression detail).
+
+  The local-only means are at or below 0.
 - **The channel axis grades monotonically for FL regression:** ρ = 1.0 trained,
   ρ = 0.375 did not train, ρ = 0 collapsed. FL classification is unaffected (28/28 at
   every ρ).
@@ -222,7 +228,9 @@ walking. In the 1-epoch smoke run, test accuracy was already 1.000.
 | Negative control 008 | 15 | 142 | not in the classes | 002 0.94, 001 0.06 (15 → 002) |
 
 Trained on Test_2 alone, the model labels 003's 20251124 recordings exactly as it labels
-four people it has never seen. Not one 20251124 window is predicted 003.
+four people it has never seen. Not one 20251124 window is predicted 003. Identity did not
+transfer in this direction; with the reverse-direction observation (below),
+cross-session identity for the one repeated subject is unresolved.
 
 **The free first look**, from the existing predictions (`derived/cross_session_free_breakdown.csv`):
 - Every centralized and FL model, all seeds and all conditions including Dirichlet,
