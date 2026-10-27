@@ -1,0 +1,8 @@
+condition,label,cls_fl,cls_local,reg_fl,reg_local
+centralized,Centralized,"28/28 [0.879, 1.000], every seed (3)",—,"+0.098 ± 0.021, 3 of 3 trained (4601: +0.121 [−0.288, +0.235]; 4602: +0.082 [−0.097, +0.186]; 4603: +0.091 [−0.034, +0.165])",—
+k2_iid,K=2 IID,"28/28 [0.879, 1.000], every seed (3)","1.000 ± 0.000 (28/28, 28/28)","+0.172 ± 0.096, 3 of 3 trained (4601: +0.089 [−3.123, +0.576]; 4602: +0.150 [−2.074, +0.543]; 4603: +0.277 [−2.307, +0.658])",+0.010 ± 0.358 over 2; 0 of 2 clients failed
+k2_natural,K=2 natural,"28/28 [0.879, 1.000], every seed (3)","0.554 ± 0.126 (13/28, 18/28)","per seed; 1 of 3 seeds collapsed (4601: −0.207 [−4.128, +0.334]; 4602: −0.123 [−4.367, +0.501]; 4603: −1.1e−06 [−3.5e−06, 4.4e−07] collapsed)",−0.726 ± 0.869 over 2; 0 of 2 clients failed
+k3_iid,K=3 rho=1.0 (IID),"28/28 [0.879, 1.000]","1.000 ± 0.000 (28/28, 28/28, 28/28)","+0.101 [−2.263, +0.480], trained",−0.125 ± 0.343 over 3; 0 of 3 clients failed
+k3_rho0.375,K=3 rho=0.375,"28/28 [0.879, 1.000]","0.976 ± 0.041 (28/28, 28/28, 26/28)","+0.046 [−0.025, +0.077], did not train",−0.329 ± 0.389 over 3; 0 of 3 clients failed
+k3_rho0,K=3 rho=0,"28/28 [0.879, 1.000]","0.976 ± 0.021 (27/28, 28/28, 27/28)","−1.9e−04 [−4.8e−04, 7.9e−05], collapsed",−0.073 ± 0.122 over 2; 1 of 3 clients failed (client_0 did not train)
+k3_dirichlet0.1,K=3 Dirichlet alpha=0.1,"22/28 [0.605, 0.898], every seed (3)","0.452 ± 0.297 (10/28, 6/28, 22/28), every seed (3)","−0.272 [−3.937, +0.258], trained",−2.237 ± 3.767 over 3; 0 of 3 clients failed

@@ -4,6 +4,163 @@ What changed, and every number that moved as a result. Newest first.
 
 ---
 
+## Session 6 — Paper figure and table suite, privacy notes (2026-10-24)
+
+Branch `s6-figures`. The PI amended the runbook's S6 section. What changed:
+- everything is built from the saved S5, S3 and centralized results;
+- the figure and table list is the one below;
+- there is no FedAdam in the comparison figure and no confusion matrix.
+
+**Nothing was trained, no reported number moved,** and no file under `artifacts/` was
+written.
+
+### `src/redo_by_sara/paper_figures.py`, `scripts/make_paper_figures.py`
+
+- **Entry point:** `make_all_figures(results_dir, out_dir)`. Each figure and table is
+  also a function of its own.
+- **Output:** the script writes `figures/` and `tables/` at the repo root, and refuses an
+  `--out-dir` inside `--results-dir`.
+- **What it reads:**
+  - `artifacts/s5`: `results_index.csv`, `derived/`, and each job's `job.json`, histories,
+    predictions and partitions;
+  - `artifacts/s3_r1_sweep`;
+  - the four canonical centralized folders.
+- **Nothing is hard-coded:**
+  - seeds, clients and subjects are discovered from those files;
+  - local-only per-client numbers come from each job's `job.json` `per_client`, which
+    holds the S5 re-derived metrics for failed clients too. The K=3 `local_only_summary.json`
+    files predate the amendment-2 layout.
+  - If a job is not in a terminal status, or a condition has no display label, the build
+    stops.
+- **Labels:**
+  - Outcome labels are the S5 ones.
+  - For runs the S5 queue never scored (the S3 sweep and the 300-epoch run), the S5
+    detector is re-applied to the saved predictions with `s5_queue.reapply_detector`.
+- **Style:**
+  - widths of 3.5 in and 7.16 in;
+  - STIX serif at 8 pt base and 7 pt ticks;
+  - Type 42 (TrueType) fonts, with no Type 3 fonts;
+  - no titles inside figures;
+  - a vector PDF plus a 300 dpi PNG for each figure.
+- **Colours:**
+  - FL is blue with circles, local-only vermillion with hollow squares, centralized ink
+    with diamonds.
+  - The subject palette is Okabe–Ito with black replaced by wine (#882255). In this order
+    it passes the dataviz palette validator: worst adjacent CVD ΔE 9.6, normal-vision
+    ΔE 20.0.
+  - Every subject also has its own marker.
+- **Determinism:** PDF timestamps are stripped. Two builds are byte-identical, which is
+  tested.
+
+**Figures:**
+
+| | Content |
+|---|---|
+| **Fig 1, convergence** (single column) | Global-train accuracy and global-train standardized MSE (log scale) against round, for K=2 IID and natural. The band is the min–max over trained seeds, with each seed's line drawn. **Natural seed 4603 is drawn as its own dotted line, labelled collapsed.** Reference lines: centralized 60 epochs (3 seeds), "centralized, matched steps" (300 epochs, final standardized MSE 4.1e-6), lookup = 1. In panel (a) the majority-class train rate, 0.222, stands in for the lookup. |
+| **Fig 2, comparison** (double column) | Every condition, with centralized, FL per seed and local-only per client. (a) run accuracy with Wilson intervals; (b) skill with bootstrap CIs and a zero line, on a linear axis clipped at −5. Cut-off whiskers get arrowheads and the hidden values are printed (local-only K=2 natural client_1: CI from −10.7; local-only Dirichlet client_1: −6.58 [−36.3, −1.80]). Models that did not train or collapsed get their own markers (△ / ×) and a label naming the model. |
+| **Fig 3, sensor axis** (single column) | ρ = 1.0, 0.375, 0. FL with intervals; local-only as mean ± std with faint per-client dots. Each FL regression point is labelled (trained / did not train / collapsed), and each local-only point with "k/n trained" (3/3, 3/3, 2/3). |
+| **Fig 4, partitions** | Runs per client × (source, subject) heatmaps, with counts printed and row totals. The panels are K=2 IID, K=2 natural, K=3 IID and Dirichlet α=0.1. **The three ρ layouts share the IID K=3 run assignment, which is asserted identical across conditions, tasks and init seeds,** so they share one panel. |
+| **Fig 5, run-level scatter** | Predicted against actual speed with an identity line. Subject is shown by colour and marker, source by fill. Panels: centralized residual 4601, FL K=2 IID 4601, local-only K=2 IID client_0 and client_1. Each panel shows RMSE, lookup RMSE and skill [CI]. |
+
+`figures/captions.md` holds draft captions with every number read from the artifacts,
+including the step counts below.
+
+**Tables** (`tables/*.tex` booktabs `tabular`, plus `*.csv` at full precision):
+
+| | Content |
+|---|---|
+| **T1, dataset** | Per (source, subject), per source, and total. Columns: runs, train/test runs, windows per task, speed mean, std and range, and the within-subject std. The run funnel is 161 → 15 excluded (006) + 6 skipped → 140. The window totals are asserted against both artifact summaries. |
+| **T2, centralized** | Classification ×3 seeds; the lookup row (skill 0, RMSE 0.0405); absolute ×3; residual 60e ×3; residual 300e ("matched steps"). Each row gives steps and its outcome. |
+| **T3, S3 sweep** | The 7 sweep configs plus the 2 natural K=2 confirmation runs, failures included. The S3 acceptance column is as recorded. The outcome column is headed "re-applied with S5 definitions". |
+| **T4, main matrix** | Laid out like the S5 summary. A group with any seed that is not trained is reported per seed. The CSV holds one row per model; `t4_main_matrix_summary.csv` holds the formatted cells. |
+| **T5, controls** | The source probe (overall and per source); the 003 control, in-session and cross-session; the negative controls 004, 005, 007 and 008; and **the reverse-direction rows, labelled "(unplanned)"**. Those rows are recomputed from client_1's saved predictions; the client is identified from its partition, not by name. |
+
+### Numbers
+
+**Re-derived, matching earlier entries.** Every cell of T2 and T4 equals the S5 results
+entry or the S3 entry. Examples:
+- natural K=2 FL: −0.207 / −0.123 / collapsed;
+- Dirichlet: 22/28 on every seed, local-only 10, 6 and 22 of 28 on every seed;
+- residual centralized: +0.098 ± 0.021.
+
+**The 300-epoch run, recomputed from its saved predictions,** reproduces S3: +0.272
+[−2.299, +0.682]. RMSE is 0.0346 m/s, final standardized MSE 4.1e-6, and its re-applied
+outcome is trained.
+
+**New numbers** (derived, not moved):
+
+- **T3, the S3 sweep under the S5 labels.** Recomputed skill equals each recorded value
+  to 1e-9.
+
+  | Config | S3 acceptance | Outcome (S5) |
+  |---|---|---|
+  | FedAvg E=1 fresh | failed | collapsed |
+  | FedAvg E=1 persistent | failed | collapsed (spread 1.2e-5) |
+  | FedAvg E=5 fresh | failed | collapsed |
+  | FedAvg E=10 fresh | failed on skill only | trained |
+  | Natural K=2 FedAvg E=5 confirmation | failed on skill only | trained |
+  | Natural K=2 FedAdam E=5 confirmation | failed on skill only | trained |
+
+  The three S3 passes stay trained.
+- **T1, run-level speed:**
+  - overall 1.371 ± 0.153 m/s (range 1.115–1.685);
+  - pooled within-(source, subject) std 0.034 m/s;
+  - Test_2 1.249 ± 0.096 (within 0.023); 20251124 1.476 ± 0.110 (within 0.042);
+  - subject 003: Test_2 1.368 ± 0.035, 20251124 1.467 ± 0.039.
+- **Gradient steps** (for the Fig 1 caption):
+
+  | | Classification | Regression |
+  |---|---|---|
+  | FL, K=2 at E=5 | 12,000 | **8,400** |
+  | Centralized, 60 epochs | 2,340 | 1,680 |
+  | Centralized, 300 epochs | — | 8,400 |
+
+  The ≈ 9,000 steps quoted in S3 is the K=3 figure. At K=2 the 300-epoch run matches
+  FL exactly.
+
+### PRIVACY_NOTES.md (R7)
+
+- **Silos:** two campaigns, explicitly not two buildings.
+- **Threat model:** an honest-but-curious server and clients; no secure aggregation, no
+  DP.
+- **What leaves a silo, with line references:**
+  - parameters, example counts and own-data diagnostic metrics each round;
+  - per-(source, subject) speed (n, Σ, Σ²) and per-channel normalization sufficient
+    statistics at setup.
+- **What it discloses:** subject mean speeds and run counts per client, and the global
+  subject label space.
+- **FedAvg is data minimization, not a guarantee.** Gradient inversion and membership
+  inference are out of scope.
+- **The simulation's four shortcuts:**
+  - **The lookup:** FL computes it from federated (n, Σ, Σ²) and aborts unless it agrees
+    with the pooled computation to 1e-12 (`combined_iid_flower.py:534–540`).
+  - **Normalization:** the pooled statistics are used; client-aggregated sufficient
+    statistics are checked to reproduce them within 2e-6.
+  - **Global-train evaluation:** done on pooled data, with federated evaluation switched
+    off.
+  - **Test evaluation:** done centrally.
+- **Also disclosed:** local-only uses the all-client lookup, and the residual model needs
+  the walker's identity at inference (R3).
+
+### Verification
+
+- **`test_s6.py`: 17 tests.**
+  - **7 fast:** LaTeX escaping, pooled std, outcome markers, partition matrix, path
+    rebasing, byte-identical untimestamped saves, and rejection of a non-terminal job.
+  - **10 on the saved results:**
+    - every output is written, and a rebuild is byte-identical;
+    - the fonts are TrueType;
+    - T1 literals: 161/15/6/140, 112/28, 1242/307, 966/238;
+    - T2: the 300-epoch run equals the S3 values to 1e-12;
+    - T3: the label sequence;
+    - T4 against the S5 entry;
+    - T5: 0/15, reverse direction 3/4 by vote and 2/4 by mean probability;
+    - 4603 is drawn outside the band, and the ρ layouts share one assignment.
+- **Not checked:** no LaTeX engine is installed on this machine, so the `.tex` tables have
+  not been compiled.
+- `pytest` (full suite, data present): **192 passed, 1 skipped** (cudnn, macOS), in
+  10 min 51 s. That is the S5 175 plus the 17 new tests.
+
 ## Session 5 (amendment 3) — Dirichlet classification at two more init seeds (2026-10-22)
 
 PI request: 4 new queue jobs, group 7. The only code change is the job list in
