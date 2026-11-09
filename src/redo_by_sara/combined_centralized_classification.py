@@ -28,6 +28,7 @@ from .guardrails import (
     resolve_seeds,
     set_random_seeds,
 )
+from .identities import identity_id, walking_class_name
 from .models import SimpleCNN1D
 
 
@@ -451,8 +452,19 @@ def build_combined_artifact(config: dict[str, Any]) -> dict[str, object]:
             f"Unexpected included subjects: {included_subjects}; expected {expected_subjects}."
         )
 
+    # One class per (source, subject) identity (PI ground truth, 2026-11-08): nobody is
+    # merged across collection campaigns, so a subject ID recorded in two sources is two
+    # classes. The identities come from the discovered records, not from a list.
+    included_identities = sorted(
+        {
+            (record.source_id, record.subject_id)
+            for record in records
+            if split_by_uid[record.run_uid] in {"train", "test"}
+        }
+    )
     class_names = ["no_walking"] + [
-        f"subject_{subject_id}_walking" for subject_id in included_subjects
+        walking_class_name(source_id, subject_id)
+        for source_id, subject_id in included_identities
     ]
     class_to_index = {class_name: index for index, class_name in enumerate(class_names)}
     # Config channels are 1-indexed; numpy needs 0-indexed. CLAUDE.md requires this
@@ -492,7 +504,7 @@ def build_combined_artifact(config: dict[str, Any]) -> dict[str, object]:
                         record.no_step_end,
                     ),
                     (
-                        f"subject_{record.subject_id}_walking",
+                        walking_class_name(record.source_id, record.subject_id),
                         record.data_start,
                         walking_end,
                     ),
@@ -563,7 +575,7 @@ def build_combined_artifact(config: dict[str, Any]) -> dict[str, object]:
     for record in records:
         no_walking_count = windows_by_run_activity[(record.run_uid, "no_walking")]
         walking_count = windows_by_run_activity[
-            (record.run_uid, f"subject_{record.subject_id}_walking")
+            (record.run_uid, walking_class_name(record.source_id, record.subject_id))
         ]
         run_manifest.append(
             _serializable_run_record(
@@ -600,6 +612,8 @@ def build_combined_artifact(config: dict[str, Any]) -> dict[str, object]:
         "selected_channels_zero_based": channel_indices,
         "subjects": included_subjects,
         "excluded_subjects": sorted(config["excluded_subjects"]),
+        "label_scheme": "source_subject_identity",
+        "identities": [identity_id(source, subject) for source, subject in included_identities],
         "class_names": class_names,
         "class_window_counts": class_window_counts,
         "target_sample_rate": target_rate,

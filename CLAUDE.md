@@ -16,9 +16,12 @@ Full work plan: `docs/review_response_plan.md`. Sensor detail: `docs/sensor_layo
 | `TestData/20251124_Testing` | 003, 004, 005, 006, 007, 008 | ≈ 1651.61 Hz | `resample_poly(31, 128)` |
 
 - **Subject 006 is excluded from every experiment** (data collection problems). Deliberate, not a bug.
-- **Subject 003 appears in BOTH sources, 19.6 months apart.** A genuine cross-session recording of the same person — a scientific asset, not duplication. Never deduplicate it. *Identity is confirmed. The demographics recorded in the `Test_2` HDF5 for subject 003 are erroneous; `testNotes.xlsx` (67 in / 45 y / 137 lb) is authoritative. Do not use the Test_2 HDF5 demographic record for this subject.*
-- Effective subjects: **001, 002, 003, 004, 005, 007, 008 → 7 subjects.** IDs are not contiguous; never assume `range(1, 8)`.
-- Subject identity and source are nearly collinear (003 is the only overlap). This is a known confound; subject 003 is the instrument for addressing it.
+- **Every subject is a `(source, subject)` identity** (PI ground truth, 2026-11-08). Subject IDs are per campaign and are **never merged across campaigns**: `test_2:003` and `testing_20251124:003` are two different people. The classification label is the identity: **8 identities + `no_walking` = 9 classes.** Identity strings are `"{source}:{subject:03d}"`, the `run_uid` prefix.
+- **One person was recorded in both campaigns: `test_2:002` ↔ `testing_20251124:003`.** By lab decision they stay **two distinct identities** (two classes). The link is recorded only as data, in `configs/identity_links.yaml`, and only evaluation controls read it — never label logic. Never write a personal name into any tracked file; record the link only as identity strings.
+- The pre-2026-11-08 pipeline gave `test_2:003` and `testing_20251124:003` the same class "003". That was the error; S5 classification results that depend on it are superseded (see `CHANGES.md`, relabel entry).
+- Demographics: the `Test_2` HDF5 is authoritative for Test_2 subjects; `testNotes.xlsx` for 20251124 subjects. Report cohort ranges only in the paper.
+- Effective identities: **test_2:001, test_2:002, test_2:003, testing_20251124:003, :004, :005, :007, :008 → 8 identities** (7 distinct people). Subject IDs are not contiguous; never assume `range(1, 8)`, and never key new subject-related logic on the subject ID alone. (Known exceptions: a few secondary regression report fields still key on subject ID; they are listed in `CHANGES.md`, kept for bitwise reproducibility, and read by no paper table or figure.)
+- Identity and source are **fully collinear**: every identity belongs to exactly one source. This is a known confound. The one same-person link is the only instrument for separating person from session.
 
 ## Signal processing — fixed, do not ablate
 
@@ -32,13 +35,13 @@ Full work plan: `docs/review_response_plan.md`. Sensor detail: `docs/sensor_layo
 1. **`run_uid = "{source}:{subject:03d}:{run:03d}"` is the indivisible atom.** A run is never split across train/test or across federated clients. With 5 s windows at 1 s stride, adjacent windows share 4 s of signal — splitting a run is direct leakage that invalidates every number in the paper.
 2. `set(train_run_uids) ∩ set(test_run_uids) == ∅`, asserted at artifact build time and again at load time.
 3. No `run_uid` appears in two clients; both tasks assign a given run to the same client.
-4. IID partitions: every client holds ≥1 run from every subject, **and no client holds all runs of any subject**.
+4. IID partitions: every client holds ≥1 run from every `(source, subject)` identity, **and no client holds all runs of any identity**.
 5. Channel-availability partitions are built by **masking a 9-channel input**, never by slicing — all clients must have identical model parameter shapes or FedAvg cannot average them. The partition unit is the **position** (8 of them), so channels 8 and 10 always travel together; the overlap ratio ρ is defined over positions.
 6. Test data is never touched during training, and the counter that proves it must actually increment.
 
 ## Reference numbers (current pipeline)
 
-161 discovered records → 15 excluded (subject 006) + 6 skipped → **140 usable runs**. Split seed 4601, 80/20 by whole run → **112 train / 28 test runs**. Classification: 1549 windows (1242/307). Regression (walking interval only): 1204 windows (966/238).
+161 discovered records → 15 excluded (subject 006) + 6 skipped → **140 usable runs**. Split seed 4601, 80/20 by whole run → **112 train / 28 test runs**. Classification: 1549 windows (1242/307), 9 classes (8 identities + `no_walking`). Regression (walking interval only): 1204 windows (966/238).
 
 Note the window-level split is not exactly 80/20; report both run-level and window-level counts.
 
@@ -69,7 +72,7 @@ Both sources were recorded on **floor 4 of the Science and Engineering Innovatio
 
 The K=2 natural split is therefore a **cross-session / cross-campaign** split, not cross-building. It remains a legitimate cross-silo federated scenario, because what differs between the two is substantial and real:
 
-- disjoint subject cohorts (only 003 overlaps)
+- disjoint subject cohorts (one person recorded in both, as two identities: `test_2:002` ↔ `testing_20251124:003`)
 - unidirectional (`Test_2`, S→N) vs bidirectional alternating (`20251124`, N→S / S→N by run parity) protocol
 - different DAQ trigger configuration
 - different true sampling rates (1706.667 vs ~1651.61 Hz)
@@ -79,7 +82,7 @@ Never describe this as cross-building in code, comments, docs, or the paper. Cro
 
 ## Working agreement
 
-- Do **not** rewrite the preprocessing pipeline, the artifact schema, or the run-splitting logic. They are correct. **Carve-out:** additive, self-contained evaluation splits for specific control experiments — notably the subject-003 cross-session control, which trains on 003's runs from one source and tests on the other — are allowed, provided they are a separate code path that does not modify `assign_run_splits`, the canonical seed-4601 split, or the main artifacts.
+- Do **not** rewrite the preprocessing pipeline, the artifact schema, or the run-splitting logic. They are correct. **Carve-out:** additive, self-contained evaluation splits for specific control experiments — notably the cross-session control, which trains on one source and tests on the linked identity (`test_2:002` ↔ `testing_20251124:003`) in the other — are allowed, provided they are a separate code path that does not modify `assign_run_splits`, the canonical seed-4601 split, or the main artifacts.
 - Split seed and initialization seed must be **separate config keys**. A single `seed: 4601` currently drives both, which makes "3 initialization seeds on the fixed split" impossible.
 - Known traps: masking goes in the dataset's `__getitem__` after normalization, **not** in the model — the model stays plain `SimpleCNN1D` with 9 input channels so parameter shapes stay identical across clients. Do not resurrect `MaskAwareSimpleCNN1D` (18-channel doubling), `training.py`, or `sensor_non_iid.py`; all are quarantined.
 - Propose a plan before any change larger than a single function, and wait for approval.

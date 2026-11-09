@@ -42,9 +42,9 @@ def test_dirichlet_partition_properties() -> None:
     )
     run_sets = [set(p.run_uids) for p in partitions]
     assert not (run_sets[0] & run_sets[1] or run_sets[0] & run_sets[2] or run_sets[1] & run_sets[2])
-    assert summary["audits"]["every_client_holds_at_least_min_subjects"] is True
+    assert summary["audits"]["every_client_holds_at_least_min_identities"] is True
     for client in summary["clients"]:
-        assert len(client["subjects"]) >= 2
+        assert len(client["identities"]) >= 2
     dirichlet = summary["dirichlet"]
     assert dirichlet["alpha"] == 0.1
     assert dirichlet["draws"] >= 1
@@ -57,7 +57,7 @@ def test_dirichlet_is_seeded_and_redraws_are_recorded() -> None:
     first, audit = _assign_dirichlet(profiles, 3, 4601, 0.1)
     again, _ = _assign_dirichlet(profiles, 3, 4601, 0.1)
     assert first == again
-    # A floor this demanding (4 subjects, 3 clients, every client >= 2) at alpha = 0.1
+    # A floor this demanding (5 identities, 3 clients, every client >= 2) at alpha = 0.1
     # cannot be met by the first draw for this seed: the redraw count is the record.
     assert audit["draws"] > 1 and audit["floor_applied"] is True
     assert str(audit["draws"] - 1) in audit["floor_note"]

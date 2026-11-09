@@ -201,12 +201,12 @@ def test_natural_partition_is_one_client_per_campaign() -> None:
     assert {uid.split(":")[0] for uid in by_client["client_0"].run_uids} == {"test_2"}
     assert {uid.split(":")[0] for uid in by_client["client_1"].run_uids} == {"testing_20251124"}
 
-    # The heterogeneity is the point: uneven sizes, incomplete subject coverage.
+    # The heterogeneity is the point: uneven sizes, incomplete identity coverage.
     clients = {c["client_id"]: c for c in summary["clients"]}
-    assert clients["client_0"]["subjects"] == ["001", "002", "003"]
-    assert clients["client_1"]["subjects"] == ["003", "004"]
+    assert clients["client_0"]["identities"] == ["test_2:001", "test_2:002", "test_2:003"]
+    assert clients["client_1"]["identities"] == ["testing_20251124:003", "testing_20251124:004"]
     assert clients["client_0"]["num_runs"] != clients["client_1"]["num_runs"]
-    assert "every_client_holds_every_subject" not in summary["audits"]
+    assert "every_client_holds_every_identity" not in summary["audits"]
     assert summary["audits"]["one_source_per_client"] is True
 
 
@@ -370,11 +370,12 @@ def test_real_partition_counts(
 
 @pytest.mark.requires_data
 @pytest.mark.parametrize("num_clients", [2, 3])
-def test_real_iid_every_client_holds_every_subject_and_stratum(num_clients: int) -> None:
+def test_real_iid_every_client_holds_every_identity_and_stratum(num_clients: int) -> None:
     _, summary = _real("iid", num_clients)
+    assert summary["audits"]["every_client_holds_every_identity"] is True
+    assert summary["audits"]["no_client_holds_all_runs_of_an_identity"] is True
     for client in summary["clients"]:
-        assert client["subjects"] == ["001", "002", "003", "004", "005", "007", "008"]
-        assert client["source_subject_groups"] == [
+        assert client["identities"] == client["source_subject_groups"] == [
             "test_2:001", "test_2:002", "test_2:003",
             "testing_20251124:003", "testing_20251124:004", "testing_20251124:005",
             "testing_20251124:007", "testing_20251124:008",
@@ -387,11 +388,14 @@ def test_real_iid_every_client_holds_every_subject_and_stratum(num_clients: int)
 
 
 @pytest.mark.requires_data
-def test_real_natural_split_subjects() -> None:
+def test_real_natural_split_identities() -> None:
     _, summary = _real("natural", 2)
     clients = {c["client_id"]: c for c in summary["clients"]}
-    assert clients["client_0"]["subjects"] == ["001", "002", "003"]
-    assert clients["client_1"]["subjects"] == ["003", "004", "005", "007", "008"]
+    assert clients["client_0"]["identities"] == ["test_2:001", "test_2:002", "test_2:003"]
+    assert clients["client_1"]["identities"] == [
+        "testing_20251124:003", "testing_20251124:004", "testing_20251124:005",
+        "testing_20251124:007", "testing_20251124:008",
+    ]
 
 
 @pytest.mark.requires_data

@@ -1,5 +1,14 @@
 """Subject-003 cross-session control (review plan §2 R4 item 3).
 
+**Superseded in its definition (PI ground truth, 2026-11-08).** This module matches the
+cross-session subject by subject ID, which assumed ``003`` was one person in both
+sources. It is not: the same person is ``test_2:002`` ↔ ``testing_20251124:003``
+(``configs/identity_links.yaml``). The S5 run is kept as recorded and re-scored under the
+link by ``relabel_rescore.rescore_control``; no retraining is needed because the model saw
+one source only. On the identity-labelled artifact this split fails loudly (the
+cross-session windows' classes are not among the control's classes), so it cannot be
+rerun by accident.
+
 Leave-one-source-out: train a subject classifier on one source only and test it on the
 same person recorded in the other source, 19.6 months later, after a DAQ configuration
 change. If identity transfers, the model is reading gait; if not, it is reading session.

@@ -4,6 +4,315 @@ What changed, and every number that moved as a result. Newest first.
 
 ---
 
+## Relabel — classification label = (source, subject) identity, 9 classes (2026-11-08)
+
+Branch `relabel-8class`. This entry covers the code, the configs, the identity-labelled
+artifact, the re-score, and the pre-commit checks. The rerun queue has not started.
+Its results will get their own entry.
+
+### The correction (PI ground truth, 2026-11-08)
+
+- `test_2:002` and `testing_20251124:003` are the **same person**. `test_2:003` is a
+  **different person**.
+- Lab decision: **nobody is merged across campaigns.** Every subject is a
+  (source, subject) identity, giving 8 identities + `no_walking` = **9 classification
+  classes**. The one person recorded in both campaigns counts as two identities.
+- **The error being fixed:** every pipeline since S1 gave `test_2:003` and
+  `testing_20251124:003` one class, "003". Those are two different people.
+- **What this overrides:** CLAUDE.md's statement that subject 003 is one person in both
+  sources, and its note calling the Test_2 HDF5 demographics for 003 erroneous. That note
+  is removed. The Test_2 HDF5 is authoritative for Test_2 subjects, `testNotes.xlsx` for
+  20251124 subjects, and the paper gives cohort ranges only.
+- **Names:** no personal name appears in any tracked file. The link is recorded only as
+  `test_2:002 ↔ testing_20251124:003`, in `configs/identity_links.yaml`.
+
+### What changed in the code
+
+- **Label (`combined_centralized_classification.build_combined_artifact`):**
+  - classes are `["no_walking"]` plus one `"{source}:{subject:03d}_walking"` per
+    (source, subject) pair found in the records;
+  - no subject ID is listed in the label logic. The existing 7-subject guard stays as
+    the 006-exclusion tripwire.
+  - The summary gains `label_scheme: source_subject_identity` and `identities`.
+  - Windows, runs, the seed-4601 split, normalization and the artifact schema are
+    unchanged.
+- **`identities.py` (new):** identity strings, and the loader for the same-person links
+  with its validation (≥ 2 members, different sources, no identity in two links). Only
+  evaluation controls read the links.
+- **Partitioner (`combined_iid_fl_partitioning.py`):**
+  - The IID property check is now per identity. Every client must hold ≥ 1 run of every
+    identity, and no client may hold all runs of one.
+  - Dirichlet draws one share vector per identity, and its floor counts identities
+    (`DIRICHLET_MIN_IDENTITIES = 2`).
+  - Client summaries: `identities` and `identity_run_counts` replace `subjects` and
+    `subject_run_counts`. Class window counts use the artifact's own class names.
+  - Audit keys are renamed to match: `every_client_holds_every_identity`,
+    `no_client_holds_all_runs_of_an_identity`,
+    `every_client_holds_at_least_min_identities`.
+  - **The IID and natural assignment functions are untouched.** They already stratify
+    on (source, subject, direction) and on source.
+- **FL runner:** the classification summary's architecture string reads the output
+  count from the artifact. It said "8 outputs".
+- **Runner partition plot:** the partition plot now looks up `identity_run_counts`
+  first.
+- **`subject003_control.py`:** a docstring note says its subject-ID matching is
+  superseded. On the identity artifact it now fails loudly; a test pins that.
+- **New modules and scripts:**
+  - `relabel_checks.py` + `scripts/run_relabel_checks.py` (step 2);
+  - `relabel_rescore.py` + `scripts/run_relabel_rescore.py` (step 3);
+  - `relabel_queue.py` + `scripts/run_relabel_queue.py` (step 4).
+- **Configs:**
+  - `configs/relabel_{k2_natural, k2_iid, k3_iid, k3_rho0.375, k3_rho0, k3_dirichlet0.1, k3_dirichlet0.3}.yaml`
+    are the S5 configs with the identity artifact and the identity centralized reference.
+    `k3_dirichlet0.3` is new.
+  - `configs/relabel_centralized_classification_init{4601,4602,4603}.yaml`.
+- **`.gitignore`:** the same rule as S5 for `artifacts/relabel/`. Per-job folders stay
+  local. The index, status log, `derived/`, `checks/`, `rescore/` and the artifact
+  summary and manifest are tracked.
+
+### The identity-labelled artifact: `artifacts/relabel/data/classification/`
+
+Built with `--preprocess-only` from `configs/relabel_centralized_classification_init4601.yaml`.
+The canonical 8-class artifact is untouched; S5 and S6 provenance still read it.
+
+**Checked against the canonical artifact (`relabel_checks.artifact_equality`):**
+- **Bitwise equal:** samples, train and test indices, `channel_mean` and `channel_std`,
+  the run manifest, and every metadata field except `activity`.
+- **The only label change:** canonical class `subject_003_walking` splits into
+  `test_2:003_walking` and `testing_20251124:003_walking`. Every other class is renamed
+  one to one.
+- 1549 windows (1242 train / 307 test), as before.
+
+| Class | Windows (all / train / test) |
+|---|---|
+| no_walking | 345 / 276 / 69 |
+| test_2:001 | 188 / 156 / 32 |
+| test_2:002 | 194 / 151 / 43 |
+| test_2:003 | 152 / 124 / 28 |
+| testing_20251124:003 | 142 / 114 / 28 |
+| testing_20251124:004 | 127 / 102 / 25 |
+| testing_20251124:005 | 134 / 109 / 25 |
+| testing_20251124:007 | 125 / 98 / 27 |
+| testing_20251124:008 | 142 / 112 / 30 |
+
+### Step 2: what is unaffected (checked before committing; to be recorded on the commit)
+
+**Regression is keyed by (source, subject)** in its lookup
+(`source_subject_train_mean`), its target (run speed), skill, the bootstrap, and the
+per-subject × source breakdown. The relabel changes no regression code.
+
+**Partitions (`relabel_checks.partition_checks`):**
+- **Unchanged assignments:** rebuilt from the identity artifact by the new code, every
+  K=2 IID, natural K=2 and K=3 IID / ρ = 0.375 / ρ = 0 run assignment is byte-identical
+  to **every** saved S5 copy of `combined_iid_run_to_client.csv`. That is 8 copies for
+  each K=2 condition and 4 for each K=3 condition, across FL and local-only, all seeds
+  and tasks.
+- **IID properties over the 8 identities:** both hold for K=2 and K=3.
+
+K=2 IID, training runs per client:
+
+| | test_2:001 | :002 | :003 | testing_20251124:003 | :004 | :005 | :007 | :008 | total |
+|---|---|---|---|---|---|---|---|---|---|
+| client_0 | 9 | 9 | 8 | 6 | 6 | 6 | 6 | 6 | 56 |
+| client_1 | 8 | 9 | 9 | 6 | 6 | 7 | 5 | 6 | 56 |
+
+K=3 IID: the same table holds for ρ = 1.0, 0.375 and 0, which share the assignment.
+
+| | test_2:001 | :002 | :003 | testing_20251124:003 | :004 | :005 | :007 | :008 | total |
+|---|---|---|---|---|---|---|---|---|---|
+| client_0 | 6 | 6 | 6 | 4 | 4 | 4 | 3 | 4 | 37 |
+| client_1 | 5 | 6 | 6 | 4 | 4 | 5 | 4 | 4 | 38 |
+| client_2 | 6 | 6 | 5 | 4 | 4 | 4 | 4 | 4 | 37 |
+
+**Dirichlet, rebuilt over identities:** same seed rule (the split seed, 4601) and the
+same 2-identity floor. **Both first draws were accepted: 0 redraws.** The S5 α = 0.1
+partition (21 / 15 / 76 runs) is gone, so S5's Dirichlet results, both tasks, are
+superseded.
+
+| | client | runs | identities | runs per identity | classification / regression windows |
+|---|---|---|---|---|---|
+| α = 0.1 | client_0 | 20 | 3 | test_2:001 1, testing_20251124:003 7, :004 12 | 222 / 181 |
+| | client_1 | 17 | 2 | testing_20251124:003 4, :005 13 | 179 / 145 |
+| | client_2 | 75 | 6 | test_2:001 16, :002 18, :003 17, testing_20251124:003 1, :007 11, :008 12 | 841 / 640 |
+| α = 0.3 | client_0 | 18 | 3 | test_2:001 4, testing_20251124:003 5, :004 9 | 203 / 163 |
+| | client_1 | 21 | 5 | test_2:001 2, testing_20251124:003 4, :005 13, :007 1, :008 1 | 228 / 184 |
+| | client_2 | 73 | 7 | test_2:001 11, :002 18, :003 17, testing_20251124:003 3, :004 3, :007 10, :008 11 | 811 / 619 |
+
+**Regression bitwise rerun:** `fl/k2_natural/seed4601/regression`, rerun on the new code
+with `configs/relabel_k2_natural.yaml`, so it reads the identity-labelled classification
+artifact for partitioning. Output went into scratch and was compared file by file with the
+committed S5 job (`relabel_checks.compare_result_dirs`). **Passed.**
+- **Byte-identical, all 7 CSVs:** `combined_iid_run_to_client.csv`,
+  `global_train_history.csv`, `local_client_fit_history.csv`, `test_run_predictions.csv`,
+  `test_window_predictions.csv`, `train_source_subject_means.csv` and
+  `test_per_subject_breakdown.csv`.
+- **Tensor-identical, all 11 `.pt` files:** the final model, the round checkpoints and
+  the persistent client optimizer states.
+- **JSON, value by value.** Every difference is one of three kinds; none is a changed
+  value:
+  - 15 absolute paths (scratch vs `artifacts/s5`);
+  - 48 label fields in the partition summary and setup audit (`subjects` →
+    `identities`, `subject_run_counts` → `identity_run_counts`, class names in the
+    class window counts; the counts themselves are equal);
+  - 3 keys present only in the rerun: `degenerate_model_check.relative_output_spread`,
+    `target_std`, and the 1e-3 threshold. The S5 job ran on `c05883c`, before the spread
+    rule (`c71e8d5`) existed. The rerun's spread, 1.1786793976213852, equals the S5
+    re-derived value in `results_index.csv` exactly.
+- PNGs are not compared.
+- The comparison allows a key the older record lacks (`added_in_rerun`) but fails a
+  changed or removed value; a test covers that rule.
+- **Still to record:** this ran on the uncommitted tree, before the commit. After the
+  commit, `scripts/run_relabel_checks.py` writes the artifact, partition and comparison
+  checks to `artifacts/relabel/checks/` against the committed code.
+
+**Smoke runs on the 9-class artifact,** into scratch, all exit 0:
+- centralized classification seed 4601, 60 epochs: test windows 1.000, run level 28/28.
+  This is a preview; the queue's job 1 reruns it.
+- FL natural K=2 classification, 1 round: 9 outputs, comparison plots against the
+  9-class centralized reference.
+- local-only Dirichlet α = 0.3 classification, 1 round.
+- The queue's metric collection and derived tables ran on those outputs.
+- Queue preflight on the uncommitted tree fails only on "uncommitted changes". The config
+  checks, the partition audits and the S5-assignment check pass.
+
+### What is kept, re-scored and rerun
+
+`artifacts/relabel/derived/s5_disposition.csv` records this for every one of the 47 S5
+jobs.
+
+| | S5 jobs | Why |
+|---|---|---|
+| **Kept** | 21. Regression: centralized absolute and residual ×3 seeds; FL K=2 IID and natural ×3 seeds; local-only K=2 IID and natural; FL and local-only K=3 ρ = 1.0 / 0.375 / 0. Plus the source probe. | Regression is keyed by (source, subject), and these partitions are byte-identical under identities (above). The source probe's label is the source. |
+| **Re-scored, no training** | 2. Local-only natural K=2 classification; the cross-session control. | Each model saw one source only, so each output names exactly one identity. |
+| **Rerun** | 24. Every other classification job; Dirichlet α = 0.1 regression, FL and local-only. | The label changed, or the partition did. |
+
+The rerun queue is those 24 jobs plus the new α = 0.3 condition (8 jobs): **32 jobs**.
+- **Order:** group 1 (9 jobs), group 2 (11), group 3 (1), group 4 (11), as approved.
+- **Estimated time:** 22.9 h at each timing class's longest S5 wall time.
+- **Preflight:** refuses to start unless the kept assignments are still byte-identical
+  to S5's, the condition for keeping K=3 ρ regression (PI, 2026-11-08). It also refuses
+  a dirty tree or a results root inside any other artifacts folder.
+
+### Step 3: re-score of saved S5 predictions (`relabel_rescore`)
+
+**The mapping rule:** an S5 output `subject_X` maps to the identity (s, X), where s is
+the model's training source, or else to the only identity with subject X. An ambiguous
+output is an error, which is what a model trained on both sources hits.
+- **Why votes don't move:** re-scoring relabels the same output units, so votes,
+  tie-breaks and mean-probability argmaxes are unchanged.
+- **Runs the model can't name:** a run whose identity has no output in the model counts
+  as wrong.
+- **Where these numbers come from:** the run before committing, into scratch. The tests
+  pin them. The tracked outputs go to `artifacts/relabel/rescore/` after the commit.
+
+**Local-only natural K=2, 28 test runs:**
+
+| Client (training source) | Run accuracy, vote [Wilson] | Mean probability | Window accuracy | S5 (vote / window) |
+|---|---|---|---|---|
+| client_0 (test_2) | 13/28 [0.295, 0.642] | 13/28 | 0.4625 | 13/28 / 0.4625 |
+| client_1 (testing_20251124) | **15/28** [0.358, 0.705] | 15/28 | **0.6189** | 18/28 / 0.6710 |
+| Mean ± std over clients | **0.500 ± 0.051** | 0.500 ± 0.051 | **0.541 ± 0.111** | 0.554 ± 0.126 / 0.567 |
+
+client_1's three S5 "hits" were Test_2 S3 runs predicted "003", which now means
+`testing_20251124:003`: a different person.
+
+**Cross-session control, redefined:** trained on Test_2 only, classes test_2:001/002/003.
+The run sets are the same as S5's; only the target changed.
+
+| Set | Runs | Result |
+|---|---|---|
+| In-session (Test_2 canonical test) | 13 | 13/13; test_2:003's 4 runs → test_2:003 (4/4) |
+| **Cross-session:** testing_20251124:003, target test_2:002 (same person) | 15 | **14/15** [0.702, 0.988] by vote and by mean probability; 1 run → test_2:001 |
+| Negative controls: testing_20251124:004 / :005 / :007 / :008 | 15 / 16 / 14 / 15 | runs → test_2:002: 15/15, 15/16, 14/14, 15/15. **Pooled 59/60** [0.911, 0.997] |
+
+The same-person "hit" rate is matched by the four different people. The model gives
+`test_2:002` to essentially every 20251124 run, so the hit reflects the session, not the
+person. S5's "0/15" scored the wrong target.
+
+**Reverse direction:** local-only natural client_1, trained on 20251124 only.
+
+| Test_2 identity | Relation | Canonical test runs (saved predictions) | **All 65 Test_2 runs** (supplementary, inference only) |
+|---|---|---|---|
+| test_2:002 | same person as testing_20251124:003 | hits **0/5** [0.000, 0.434]; runs → :007 (4), :004 (1); 1 of 43 windows | hits **0/23** [0.000, 0.143]; → :007 (17), :004 (6); 11 of 194 windows |
+| test_2:003 | different person | false matches **3/4** by vote [0.301, 0.954], 2/4 by mean probability | false matches **19/21** [0.711, 0.973] by vote, 18/21 [0.654, 0.950] by mean probability; 118 of 152 windows |
+| test_2:001 | different person | 0/4 false matches (all → :008) | 0/21 [0.000, 0.155] (all → :008) |
+
+- **What the supplementary run does:** it runs inference from client_1's saved
+  checkpoint over every Test_2 run, canonical train runs included; client_1 never saw
+  Test_2.
+- **Check:** the 103 canonical-test windows reproduce the saved predictions.
+- **What it shows:** the S5 "weak positive" for 003 in this direction is a **false
+  match**. The model's `testing_20251124:003` label goes to a different person. The
+  same person is never identified.
+
+client_0 (Test_2 only), the analogue in the forward direction, labels every 20251124 run
+`test_2:002`. That is 15/15 for the same person and 60/60 for the others, over all 75
+runs.
+
+### Secondary regression fields that still merge the two 003s (kept, not read)
+
+These fields key on the subject ID alone, so they pool `test_2:003` with
+`testing_20251124:003`. None of them feeds the lookup, skill, the bootstrap, the
+per-subject × source breakdown, or any gate. **They stay unchanged so the kept
+regression results remain bitwise reproducible.**
+
+| Field | Where |
+|---|---|
+| `speed_distribution_by_subject` | `combined_centralized_regression.py:328` (artifact summary) |
+| `subject_train_run_mean` / `subject_train_run_mean_mps` (a comparison baseline) | `combined_centralized_regression.py:603, 615`; read for a runner plot at `combined_residual_run_regression.py:557` and `combined_iid_flower_plots.py:616` |
+| `test_window_metrics_by_subject`, `test_run_metrics_by_subject` | `combined_centralized_regression.py:835, 838` |
+| `test_run_metrics_by_subject` | `combined_residual_run_regression.py:975`, `combined_iid_flower.py:1962` |
+| Per-subject colours in runner scatter plots | `combined_centralized_regression.py:538`, `combined_residual_run_regression.py:517` |
+
+`test_relabel.py` asserts that nothing in the S6 suite (`paper_figures.py`,
+`make_paper_figures.py`) reads any of them.
+
+### Numbers that moved
+
+| | Before (S5) | Now |
+|---|---|---|
+| Classes | 8 (`no_walking` + 7 subject IDs) | **9** (`no_walking` + 8 identities) |
+| Local-only natural K=2, client_1, run accuracy | 18/28 | **15/28** |
+| Local-only natural K=2, mean over clients | 0.554 ± 0.126 | **0.500 ± 0.051** |
+| Local-only natural K=2, client_1, window accuracy | 0.6710 | **0.6189** |
+| Cross-session control | 0/15 (target: the wrong person) | **14/15** to the same person, with negative controls at 59/60 |
+| Reverse direction, client_1 on Test_2 "003" runs | 3/4 "003" read as a weak positive | **3/4 false matches** (a different person); same person 0/5 |
+| Dirichlet α = 0.1 partition (runs per client) | 21 / 15 / 76 (S4 entry) | **20 / 17 / 75** |
+
+- **Superseded, to be rerun:** every S5 classification number except the source probe,
+  and Dirichlet regression. That covers T4's classification columns and Dirichlet
+  regression, T5's control rows, and Figs 2–4.
+- **Not moved:** every kept regression number above.
+
+### Not done here
+
+- **The S6 figures, tables and captions are stale** until the rerun completes. Their
+  subject palette has 7 colours, and there are now 8 identities.
+- Docs other than CLAUDE.md (`docs/review_response_plan.md`, `PRIVACY_NOTES.md`) still
+  describe "subject 003" as one person.
+
+### Verification
+
+- **`test_relabel.py`, 24 tests:**
+  - identity strings and link validation; the repo link is identity strings only;
+  - no subject ID literal in the relabel modules; the builder names identities;
+  - nothing in S6 reads the merging fields;
+  - Dirichlet groups by identity; the IID check is per identity (a partition the old
+    subject-ID check passed is rejected); client class counts use the artifact's names;
+  - the re-score mapping, the refusal for two-source models, and identity correctness;
+  - the job matrix (32 jobs, order, groups); the commands; the configs; the S5
+    disposition (21 / 2 / 24 of 47); the estimate; the JSON-difference rule;
+  - **with data:** the artifact's classes and window counts, its equality with the
+    canonical artifact, and that the old control refuses the identity artifact;
+    kept assignments byte-identical to S5; Dirichlet α = 0.1 / 0.3 counts and draws;
+    every re-score number above.
+- **Updated for the renamed partition keys:** `test_combined_iid_fl_partitioning.py`
+  and `test_s4_partitions_and_modes.py`.
+- `pytest` (full suite, data present): **216 passed, 1 skipped** (cudnn, macOS), in
+  6 min 39 s. That is the S6 192 plus the 24 new tests.
+
+---
+
 ## Session 6 — Paper figure and table suite, privacy notes (2026-10-24)
 
 Branch `s6-figures`. The PI amended the runbook's S6 section. What changed:

@@ -27,12 +27,16 @@ Two schemes, both over the K clients of a real ``num_clients`` parameter (K <= 3
     single direction value per subject).  See ``docs/session0_findings.md``.
 
 ``dirichlet``
-    Label skew over subjects (K=3, alpha=0.1 in S5). For each subject, client shares
-    p ~ Dir(alpha * 1_K) are drawn and that subject's training runs, in a seeded order,
+    Label skew over (source, subject) identities (K=3). For each identity, client shares
+    p ~ Dir(alpha * 1_K) are drawn and that identity's training runs, in a seeded order,
     are dealt to clients by largest-remainder rounding of p * n. Runs stay atomic and
     both tasks share the assignment. A draw that leaves any client with fewer than
-    ``min_subjects`` subjects is redrawn; the number of draws and whether the floor was
-    applied are recorded, because the paper must state it.
+    ``min_identities`` identities is redrawn; the number of draws and whether the floor
+    was applied are recorded, because the paper must state it.
+
+Subjects are (source, subject) identities throughout (PI ground truth, 2026-11-08): a
+subject ID recorded in two sources is two identities, never merged. The IID and natural
+assignments already key on source; the identity checks and the Dirichlet grouping do too.
 
 Orthogonal to the run assignment, an IID K=3 partition can carry a **channel
 availability** layout (``channel_overlap`` = rho, see ``channel_availability``): every
@@ -68,11 +72,12 @@ from typing import Any, Mapping, Sequence
 import numpy as np
 
 from .guardrails import assert_split_integrity
+from .identities import identity_id
 
 
 PARTITION_SCHEMES = ("iid", "natural", "dirichlet")
-#: Dirichlet floor: every client must hold at least this many subjects.
-DIRICHLET_MIN_SUBJECTS = 2
+#: Dirichlet floor: every client must hold at least this many (source, subject) identities.
+DIRICHLET_MIN_IDENTITIES = 2
 DIRICHLET_MAX_DRAWS = 10_000
 #: §1.2: with 112 training runs, K > 3 leaves ~4 optimizer steps per local epoch at
 #: batch size 4, which structurally reproduces the R1 collapse.
@@ -111,10 +116,16 @@ class _RunProfile:
     regression_indices: tuple[int, ...]
     walking_classification_indices: tuple[int, ...]
     no_walking_classification_indices: tuple[int, ...]
+    #: The classification class of this run's walking windows, as the artifact names it.
+    walking_class: str = ""
 
     @property
     def stratum(self) -> tuple[str, str, str]:
         return (self.source_id, self.subject_id, self.direction)
+
+    @property
+    def identity(self) -> str:
+        return identity_id(self.source_id, self.subject_id)
 
     @property
     def walking_windows(self) -> int:
@@ -268,6 +279,9 @@ def _build_run_profiles(
             raise AssertionError(
                 f"Classification/regression walking counts differ for {run_uid}."
             )
+        walking_classes = {str(item.get("activity", "")) for _, item in walking_rows}
+        if len(walking_classes) != 1:
+            raise AssertionError(f"Run {run_uid} has walking windows of several classes: {walking_classes}.")
 
         profiles[run_uid] = _RunProfile(
             run_uid=run_uid,
@@ -280,6 +294,7 @@ def _build_run_profiles(
             regression_indices=tuple(index for index, _ in regression_rows),
             walking_classification_indices=tuple(index for index, _ in walking_rows),
             no_walking_classification_indices=tuple(index for index, _ in no_walking_rows),
+            walking_class=next(iter(walking_classes)),
         )
     return (
         profiles,
@@ -404,51 +419,51 @@ def _assign_dirichlet(
     num_clients: int,
     seed: int,
     alpha: float,
-    min_subjects: int = DIRICHLET_MIN_SUBJECTS,
+    min_identities: int = DIRICHLET_MIN_IDENTITIES,
 ) -> tuple[dict[str, int], dict[str, Any]]:
-    """Run-level Dirichlet label skew over subjects, redrawn until the floor holds."""
+    """Run-level Dirichlet label skew over identities, redrawn until the floor holds."""
 
-    subjects = sorted({profile.subject_id for profile in profiles.values()})
-    runs_by_subject = {
-        subject: sorted(
-            (p for p in profiles.values() if p.subject_id == subject),
+    identities = sorted({profile.identity for profile in profiles.values()})
+    runs_by_identity = {
+        identity: sorted(
+            (p for p in profiles.values() if p.identity == identity),
             key=lambda p: _seed_rank(seed, "dirichlet-order", p.run_uid),
         )
-        for subject in subjects
+        for identity in identities
     }
     rng = np.random.default_rng(seed)
     for draw in range(1, DIRICHLET_MAX_DRAWS + 1):
         assignment: dict[str, int] = {}
         shares: dict[str, list[float]] = {}
         counts: dict[str, list[int]] = {}
-        for subject in subjects:
+        for identity in identities:
             p = rng.dirichlet([float(alpha)] * num_clients)
-            members = runs_by_subject[subject]
-            subject_counts = _largest_remainder(p, len(members))
-            owners = [client for client in range(num_clients) for _ in range(subject_counts[client])]
+            members = runs_by_identity[identity]
+            identity_counts = _largest_remainder(p, len(members))
+            owners = [client for client in range(num_clients) for _ in range(identity_counts[client])]
             for profile, owner in zip(members, owners):
                 assignment[profile.run_uid] = owner
-            shares[subject] = [float(value) for value in p]
-            counts[subject] = subject_counts
-        subjects_per_client = [
-            {profiles[uid].subject_id for uid, owner in assignment.items() if owner == client}
+            shares[identity] = [float(value) for value in p]
+            counts[identity] = identity_counts
+        identities_per_client = [
+            {profiles[uid].identity for uid, owner in assignment.items() if owner == client}
             for client in range(num_clients)
         ]
-        if all(len(held) >= min_subjects for held in subjects_per_client):
+        if all(len(held) >= min_identities for held in identities_per_client):
             return assignment, {
                 "alpha": float(alpha),
-                "min_subjects_per_client": int(min_subjects),
+                "min_identities_per_client": int(min_identities),
                 "draws": draw,
                 "floor_applied": draw > 1,
                 "floor_note": (
-                    f"Dirichlet draws that left a client with fewer than {min_subjects} "
-                    f"subjects were redrawn; {draw - 1} draw(s) rejected before acceptance."
+                    f"Dirichlet draws that left a client with fewer than {min_identities} "
+                    f"identities were redrawn; {draw - 1} draw(s) rejected before acceptance."
                 ),
-                "subject_client_shares": shares,
-                "subject_client_run_counts": counts,
+                "identity_client_shares": shares,
+                "identity_client_run_counts": counts,
             }
     raise AssertionError(
-        f"No Dirichlet(alpha={alpha}) draw met the {min_subjects}-subject floor in "
+        f"No Dirichlet(alpha={alpha}) draw met the {min_identities}-identity floor in "
         f"{DIRICHLET_MAX_DRAWS} draws."
     )
 
@@ -559,16 +574,16 @@ def _assert_iid_properties(
     if max(run_counts) - min(run_counts) > 1:
         raise AssertionError(f"IID client run counts are not within one: {run_counts}.")
 
-    all_subjects = {profile.subject_id for profile in profiles.values()}
+    all_identities = {profile.identity for profile in profiles.values()}
     all_strata = {profile.stratum for profile in profiles.values()}
-    subject_totals = Counter(profile.subject_id for profile in profiles.values())
+    identity_totals = Counter(profile.identity for profile in profiles.values())
     for partition in partitions:
         client_profiles = [profiles[run_uid] for run_uid in partition.run_uids]
-        subject_counts = Counter(profile.subject_id for profile in client_profiles)
-        missing_subjects = all_subjects - set(subject_counts)
-        if missing_subjects:
+        identity_counts = Counter(profile.identity for profile in client_profiles)
+        missing_identities = all_identities - set(identity_counts)
+        if missing_identities:
             raise AssertionError(
-                f"{partition.client_id} holds no run of subjects {sorted(missing_subjects)}."
+                f"{partition.client_id} holds no run of identities {sorted(missing_identities)}."
             )
         missing_strata = all_strata - {profile.stratum for profile in client_profiles}
         if missing_strata:
@@ -576,12 +591,12 @@ def _assert_iid_properties(
                 f"{partition.client_id} holds no run of strata {sorted(missing_strata)}."
             )
         hoarded = [
-            subject for subject, count in subject_counts.items()
-            if count == subject_totals[subject]
+            identity for identity, count in identity_counts.items()
+            if count == identity_totals[identity]
         ]
         if hoarded:
             raise AssertionError(
-                f"{partition.client_id} holds every training run of subjects {hoarded}."
+                f"{partition.client_id} holds every training run of identities {hoarded}."
             )
 
     for block in block_audit:
@@ -592,9 +607,9 @@ def _assert_iid_properties(
 
     return {
         "client_run_count_spread": max(run_counts) - min(run_counts),
-        "every_client_holds_every_subject": True,
+        "every_client_holds_every_identity": True,
         "every_client_holds_every_source_subject_direction_stratum": True,
-        "no_client_holds_all_runs_of_a_subject": True,
+        "no_client_holds_all_runs_of_an_identity": True,
         "complete_speed_blocks_split_one_per_client": True,
     }
 
@@ -622,17 +637,17 @@ def _assert_natural_properties(
 def _assert_dirichlet_properties(
     partitions: Sequence[ClientPartition],
     profiles: Mapping[str, _RunProfile],
-    min_subjects: int,
+    min_identities: int,
 ) -> dict[str, Any]:
     """Dirichlet-only property. IID balance and coverage are explicitly not required."""
 
     for partition in partitions:
-        held = {profiles[uid].subject_id for uid in partition.run_uids}
-        if len(held) < min_subjects:
+        held = {profiles[uid].identity for uid in partition.run_uids}
+        if len(held) < min_identities:
             raise AssertionError(
-                f"{partition.client_id} holds {len(held)} subjects, below the floor of {min_subjects}."
+                f"{partition.client_id} holds {len(held)} identities, below the floor of {min_identities}."
             )
-    return {"every_client_holds_at_least_min_subjects": True, "min_subjects": min_subjects}
+    return {"every_client_holds_at_least_min_identities": True, "min_identities": min_identities}
 
 
 def _client_summary(
@@ -641,7 +656,7 @@ def _client_summary(
     client_profiles = [profiles[run_uid] for run_uid in partition.run_uids]
     walking_class_counts: Counter[str] = Counter()
     for profile in client_profiles:
-        walking_class_counts[f"subject_{profile.subject_id}_walking"] += profile.walking_windows
+        walking_class_counts[profile.walking_class] += profile.walking_windows
     no_walking_count = sum(profile.no_walking_windows for profile in client_profiles)
     return {
         "client_id": partition.client_id,
@@ -650,12 +665,12 @@ def _client_summary(
         "num_regression_windows": len(partition.regression_indices),
         "num_walking_windows": sum(profile.walking_windows for profile in client_profiles),
         "num_no_walking_windows": no_walking_count,
-        "subjects": sorted({profile.subject_id for profile in client_profiles}),
+        "identities": sorted({profile.identity for profile in client_profiles}),
         "source_subject_groups": sorted(
             {f"{profile.source_id}:{profile.subject_id}" for profile in client_profiles}
         ),
-        "subject_run_counts": dict(
-            sorted(Counter(profile.subject_id for profile in client_profiles).items())
+        "identity_run_counts": dict(
+            sorted(Counter(profile.identity for profile in client_profiles).items())
         ),
         "source_run_counts": dict(
             sorted(Counter(profile.source_id for profile in client_profiles).items())
@@ -777,7 +792,7 @@ def build_combined_partitions(
         audits.update(_assert_iid_properties(partitions, profiles, block_audit))
     elif scheme == "dirichlet":
         audits.update(
-            _assert_dirichlet_properties(partitions, profiles, DIRICHLET_MIN_SUBJECTS)
+            _assert_dirichlet_properties(partitions, profiles, DIRICHLET_MIN_IDENTITIES)
         )
     else:
         audits.update(_assert_natural_properties(partitions, profiles, sources))

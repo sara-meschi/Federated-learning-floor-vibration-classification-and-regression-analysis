@@ -14,3 +14,12 @@ artifacts/s5/*
 !artifacts/s5/results_index.csv
 !artifacts/s5/status.log
 !artifacts/s5/derived/
+# Relabel (8 identities): per-job outputs stay local; the index, status log, derived
+# tables, step-2 checks, re-scores and the artifact summary/manifest are the record.
+artifacts/relabel/*
+!artifacts/relabel/results_index.csv
+!artifacts/relabel/status.log
+!artifacts/relabel/derived/
+!artifacts/relabel/checks/
+!artifacts/relabel/rescore/
+!artifacts/relabel/data/

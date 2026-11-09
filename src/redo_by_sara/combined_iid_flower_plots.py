@@ -870,7 +870,7 @@ def plot_partition_balance(summary: MappingInput, output_path: PathLike) -> Path
     subject_counts = [
         _counts_mapping(
             row,
-            ["runs_by_subject", "subject_run_counts", "run_counts_by_subject"],
+            ["identity_run_counts", "runs_by_subject", "subject_run_counts", "run_counts_by_subject"],
         )
         for row in rows
     ]

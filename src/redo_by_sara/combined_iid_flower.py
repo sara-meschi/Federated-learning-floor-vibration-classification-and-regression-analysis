@@ -1604,7 +1604,7 @@ def _finalize_classification(
         "seeding": core_audit["seeding"],
         "framework": _framework_label(config),
         "strategy": config["aggregation"],
-        "architecture": "SimpleCNN1D with GroupNorm; 9 inputs and 8 outputs",
+        "architecture": f"SimpleCNN1D with GroupNorm; 9 inputs and {len(artifact['index_to_class'])} outputs",
         "rounds": num_rounds,
         "local_epochs_per_round": config["local_epochs"],
         "subjects": ["001", "002", "003", "004", "005", "007", "008"],

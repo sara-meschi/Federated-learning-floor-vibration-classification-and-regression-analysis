@@ -1,0 +1,8 @@
+# Same-person links between (source, subject) identities (PI ground truth, 2026-11-08).
+#
+# Every (source, subject) pair is its own classification identity; nobody is merged
+# across collection campaigns. This file only records which identities are the same
+# person, for evaluation controls (the cross-session control and the reverse-direction
+# check). Label logic never reads it. No personal names: identity strings only.
+same_person:
+  - [test_2:002, testing_20251124:003]
