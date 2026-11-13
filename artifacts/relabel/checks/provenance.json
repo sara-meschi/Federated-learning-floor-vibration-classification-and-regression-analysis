@@ -1,0 +1,14 @@
+{
+  "written": "2026-11-08T18:37:47",
+  "head_commit": "ff5056f6dc913759363d2fc4a8392ec004734ee3",
+  "checks_run_on": "committed code (clean src/ scripts/ configs/)",
+  "artifact_equality.json": "scripts/run_relabel_checks.py artifact",
+  "partitions.json": "scripts/run_relabel_checks.py partitions",
+  "regression_bitwise_k2_natural_seed4601.json": {
+    "command": "scripts/run_relabel_checks.py compare --s5 artifacts/s5/fl/k2_natural/seed4601/regression --rerun <scratch>/k2_natural_seed4601_regression",
+    "rerun": "python scripts/run_combined_iid_flower.py --config configs/relabel_k2_natural.yaml --task regression --output-root <scratch>/k2_natural_seed4601_regression, 2026-11-08 17:13-18:15, before the commit (PI: not repeated)",
+    "code_equivalence": "Of the files the commit touched in src/scripts/configs, every one but two had the same content at rerun start as in the commit. The two exceptions: relabel_checks.py (the comparison rule only) and subject003_control.py (+9 docstring lines). The FL runner imports neither.",
+    "rerun_outputs": "scratch only (not retained in the repo); this check file is the record"
+  },
+  "rescore": "scripts/run_relabel_rescore.py -> artifacts/relabel/rescore/"
+}

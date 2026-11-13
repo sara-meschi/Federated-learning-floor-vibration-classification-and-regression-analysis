@@ -1,0 +1,526 @@
+{
+  "s5_dir": "artifacts/s5/fl/k2_natural/seed4601/regression",
+  "rerun_dir": "/private/tmp/claude-501/-Users-sara-coding-projects-Federated-learning-floor-vibration-classification-and-regression-analysis/c13e7647-2afc-4624-9e6a-6ef39f41d009/scratchpad/smoke/k2_natural_seed4601_regression",
+  "only_in_s5": [],
+  "only_in_rerun": [],
+  "identical": [
+    "partitions/combined_iid_client_partitions.json",
+    "partitions/combined_iid_run_to_client.csv",
+    "regression/client_optimizer_state/client_0.pt",
+    "regression/client_optimizer_state/client_1.pt",
+    "regression/flower_iid_global_residual_regression_model.pt",
+    "regression/global_train_history.csv",
+    "regression/local_client_fit_history.csv",
+    "regression/round_checkpoints/round_000.pt",
+    "regression/round_checkpoints/round_001.pt",
+    "regression/round_checkpoints/round_010.pt",
+    "regression/round_checkpoints/round_020.pt",
+    "regression/round_checkpoints/round_030.pt",
+    "regression/round_checkpoints/round_040.pt",
+    "regression/round_checkpoints/round_050.pt",
+    "regression/round_checkpoints/round_060.pt",
+    "regression/test_per_subject_breakdown.csv",
+    "regression/test_run_predictions.csv",
+    "regression/test_window_predictions.csv",
+    "regression/train_source_subject_means.csv"
+  ],
+  "differing": [],
+  "png_not_compared": [
+    "partitions/client_partition_balance.png",
+    "regression/actual_vs_predicted_speed.png",
+    "regression/centralized_vs_flower_global_train_metrics.png",
+    "regression/centralized_vs_flower_paired_run_absolute_errors.png",
+    "regression/centralized_vs_flower_per_subject_rmse.png",
+    "regression/heldout_run_rmse_comparison.png"
+  ],
+  "json_differences": {
+    "partitions/combined_iid_partition_summary.json": [
+      {
+        "key": "/clients[0]/classification_class_window_counts/subject_001_walking",
+        "kind": "label_field",
+        "s5": 156,
+        "rerun": "<absent>"
+      },
+      {
+        "key": "/clients[0]/classification_class_window_counts/subject_002_walking",
+        "kind": "label_field",
+        "s5": 151,
+        "rerun": "<absent>"
+      },
+      {
+        "key": "/clients[0]/classification_class_window_counts/subject_003_walking",
+        "kind": "label_field",
+        "s5": 124,
+        "rerun": "<absent>"
+      },
+      {
+        "key": "/clients[0]/classification_class_window_counts/test_2:001_walking",
+        "kind": "label_field",
+        "s5": "<absent>",
+        "rerun": 156
+      },
+      {
+        "key": "/clients[0]/classification_class_window_counts/test_2:002_walking",
+        "kind": "label_field",
+        "s5": "<absent>",
+        "rerun": 151
+      },
+      {
+        "key": "/clients[0]/classification_class_window_counts/test_2:003_walking",
+        "kind": "label_field",
+        "s5": "<absent>",
+        "rerun": 124
+      },
+      {
+        "key": "/clients[0]/identities",
+        "kind": "label_field",
+        "s5": "<absent>",
+        "rerun": [
+          "test_2:001",
+          "test_2:002",
+          "test_2:003"
+        ]
+      },
+      {
+        "key": "/clients[0]/identity_run_counts",
+        "kind": "label_field",
+        "s5": "<absent>",
+        "rerun": {
+          "test_2:001": 17,
+          "test_2:002": 18,
+          "test_2:003": 17
+        }
+      },
+      {
+        "key": "/clients[0]/subject_run_counts",
+        "kind": "label_field",
+        "s5": {
+          "001": 17,
+          "002": 18,
+          "003": 17
+        },
+        "rerun": "<absent>"
+      },
+      {
+        "key": "/clients[0]/subjects",
+        "kind": "label_field",
+        "s5": [
+          "001",
+          "002",
+          "003"
+        ],
+        "rerun": "<absent>"
+      },
+      {
+        "key": "/clients[1]/classification_class_window_counts/subject_003_walking",
+        "kind": "label_field",
+        "s5": 114,
+        "rerun": "<absent>"
+      },
+      {
+        "key": "/clients[1]/classification_class_window_counts/subject_004_walking",
+        "kind": "label_field",
+        "s5": 102,
+        "rerun": "<absent>"
+      },
+      {
+        "key": "/clients[1]/classification_class_window_counts/subject_005_walking",
+        "kind": "label_field",
+        "s5": 109,
+        "rerun": "<absent>"
+      },
+      {
+        "key": "/clients[1]/classification_class_window_counts/subject_007_walking",
+        "kind": "label_field",
+        "s5": 98,
+        "rerun": "<absent>"
+      },
+      {
+        "key": "/clients[1]/classification_class_window_counts/subject_008_walking",
+        "kind": "label_field",
+        "s5": 112,
+        "rerun": "<absent>"
+      },
+      {
+        "key": "/clients[1]/classification_class_window_counts/testing_20251124:003_walking",
+        "kind": "label_field",
+        "s5": "<absent>",
+        "rerun": 114
+      },
+      {
+        "key": "/clients[1]/classification_class_window_counts/testing_20251124:004_walking",
+        "kind": "label_field",
+        "s5": "<absent>",
+        "rerun": 102
+      },
+      {
+        "key": "/clients[1]/classification_class_window_counts/testing_20251124:005_walking",
+        "kind": "label_field",
+        "s5": "<absent>",
+        "rerun": 109
+      },
+      {
+        "key": "/clients[1]/classification_class_window_counts/testing_20251124:007_walking",
+        "kind": "label_field",
+        "s5": "<absent>",
+        "rerun": 98
+      },
+      {
+        "key": "/clients[1]/classification_class_window_counts/testing_20251124:008_walking",
+        "kind": "label_field",
+        "s5": "<absent>",
+        "rerun": 112
+      },
+      {
+        "key": "/clients[1]/identities",
+        "kind": "label_field",
+        "s5": "<absent>",
+        "rerun": [
+          "testing_20251124:003",
+          "testing_20251124:004",
+          "testing_20251124:005",
+          "testing_20251124:007",
+          "testing_20251124:008"
+        ]
+      },
+      {
+        "key": "/clients[1]/identity_run_counts",
+        "kind": "label_field",
+        "s5": "<absent>",
+        "rerun": {
+          "testing_20251124:003": 12,
+          "testing_20251124:004": 12,
+          "testing_20251124:005": 13,
+          "testing_20251124:007": 11,
+          "testing_20251124:008": 12
+        }
+      },
+      {
+        "key": "/clients[1]/subject_run_counts",
+        "kind": "label_field",
+        "s5": {
+          "003": 12,
+          "004": 12,
+          "005": 13,
+          "007": 11,
+          "008": 12
+        },
+        "rerun": "<absent>"
+      },
+      {
+        "key": "/clients[1]/subjects",
+        "kind": "label_field",
+        "s5": [
+          "003",
+          "004",
+          "005",
+          "007",
+          "008"
+        ],
+        "rerun": "<absent>"
+      }
+    ],
+    "regression/training_summary.json": [
+      {
+        "key": "/actual_vs_predicted_plot",
+        "kind": "path",
+        "s5": "/Users/sara/coding_projects/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/s5/fl/k2_natural/seed4601/regression/regression/actual_vs_predicted_speed.png",
+        "rerun": "/private/tmp/claude-501/-Users-sara-coding-projects-Federated-learning-floor-vibration-classification-and-regression-analysis/c13e7647-2afc-4624-9e6a-6ef39f41d009/scratchpad/smoke/k2_natural_seed4601_regression/regression/actual_vs_predicted_speed.png"
+      },
+      {
+        "key": "/degenerate_model_check/relative_output_spread",
+        "kind": "added_in_rerun",
+        "s5": "<absent>",
+        "rerun": 1.1786793976213852
+      },
+      {
+        "key": "/degenerate_model_check/target_std",
+        "kind": "added_in_rerun",
+        "s5": "<absent>",
+        "rerun": 0.03896812282640268
+      },
+      {
+        "key": "/degenerate_model_check/thresholds/minimum_relative_output_spread",
+        "kind": "added_in_rerun",
+        "s5": "<absent>",
+        "rerun": 0.001
+      },
+      {
+        "key": "/global_train_history_path",
+        "kind": "path",
+        "s5": "/Users/sara/coding_projects/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/s5/fl/k2_natural/seed4601/regression/regression/global_train_history.csv",
+        "rerun": "/private/tmp/claude-501/-Users-sara-coding-projects-Federated-learning-floor-vibration-classification-and-regression-analysis/c13e7647-2afc-4624-9e6a-6ef39f41d009/scratchpad/smoke/k2_natural_seed4601_regression/regression/global_train_history.csv"
+      },
+      {
+        "key": "/heldout_rmse_comparison_plot",
+        "kind": "path",
+        "s5": "/Users/sara/coding_projects/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/s5/fl/k2_natural/seed4601/regression/regression/heldout_run_rmse_comparison.png",
+        "rerun": "/private/tmp/claude-501/-Users-sara-coding-projects-Federated-learning-floor-vibration-classification-and-regression-analysis/c13e7647-2afc-4624-9e6a-6ef39f41d009/scratchpad/smoke/k2_natural_seed4601_regression/regression/heldout_run_rmse_comparison.png"
+      },
+      {
+        "key": "/local_client_fit_history_path",
+        "kind": "path",
+        "s5": "/Users/sara/coding_projects/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/s5/fl/k2_natural/seed4601/regression/regression/local_client_fit_history.csv",
+        "rerun": "/private/tmp/claude-501/-Users-sara-coding-projects-Federated-learning-floor-vibration-classification-and-regression-analysis/c13e7647-2afc-4624-9e6a-6ef39f41d009/scratchpad/smoke/k2_natural_seed4601_regression/regression/local_client_fit_history.csv"
+      },
+      {
+        "key": "/model_path",
+        "kind": "path",
+        "s5": "/Users/sara/coding_projects/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/s5/fl/k2_natural/seed4601/regression/regression/flower_iid_global_residual_regression_model.pt",
+        "rerun": "/private/tmp/claude-501/-Users-sara-coding-projects-Federated-learning-floor-vibration-classification-and-regression-analysis/c13e7647-2afc-4624-9e6a-6ef39f41d009/scratchpad/smoke/k2_natural_seed4601_regression/regression/flower_iid_global_residual_regression_model.pt"
+      },
+      {
+        "key": "/paired_run_error_plot",
+        "kind": "path",
+        "s5": "/Users/sara/coding_projects/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/s5/fl/k2_natural/seed4601/regression/regression/centralized_vs_flower_paired_run_absolute_errors.png",
+        "rerun": "/private/tmp/claude-501/-Users-sara-coding-projects-Federated-learning-floor-vibration-classification-and-regression-analysis/c13e7647-2afc-4624-9e6a-6ef39f41d009/scratchpad/smoke/k2_natural_seed4601_regression/regression/centralized_vs_flower_paired_run_absolute_errors.png"
+      },
+      {
+        "key": "/per_subject_rmse_comparison_plot",
+        "kind": "path",
+        "s5": "/Users/sara/coding_projects/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/s5/fl/k2_natural/seed4601/regression/regression/centralized_vs_flower_per_subject_rmse.png",
+        "rerun": "/private/tmp/claude-501/-Users-sara-coding-projects-Federated-learning-floor-vibration-classification-and-regression-analysis/c13e7647-2afc-4624-9e6a-6ef39f41d009/scratchpad/smoke/k2_natural_seed4601_regression/regression/centralized_vs_flower_per_subject_rmse.png"
+      },
+      {
+        "key": "/test_per_subject_breakdown_path",
+        "kind": "path",
+        "s5": "/Users/sara/coding_projects/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/s5/fl/k2_natural/seed4601/regression/regression/test_per_subject_breakdown.csv",
+        "rerun": "/private/tmp/claude-501/-Users-sara-coding-projects-Federated-learning-floor-vibration-classification-and-regression-analysis/c13e7647-2afc-4624-9e6a-6ef39f41d009/scratchpad/smoke/k2_natural_seed4601_regression/regression/test_per_subject_breakdown.csv"
+      },
+      {
+        "key": "/test_run_predictions_path",
+        "kind": "path",
+        "s5": "/Users/sara/coding_projects/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/s5/fl/k2_natural/seed4601/regression/regression/test_run_predictions.csv",
+        "rerun": "/private/tmp/claude-501/-Users-sara-coding-projects-Federated-learning-floor-vibration-classification-and-regression-analysis/c13e7647-2afc-4624-9e6a-6ef39f41d009/scratchpad/smoke/k2_natural_seed4601_regression/regression/test_run_predictions.csv"
+      },
+      {
+        "key": "/test_window_predictions_path",
+        "kind": "path",
+        "s5": "/Users/sara/coding_projects/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/s5/fl/k2_natural/seed4601/regression/regression/test_window_predictions.csv",
+        "rerun": "/private/tmp/claude-501/-Users-sara-coding-projects-Federated-learning-floor-vibration-classification-and-regression-analysis/c13e7647-2afc-4624-9e6a-6ef39f41d009/scratchpad/smoke/k2_natural_seed4601_regression/regression/test_window_predictions.csv"
+      },
+      {
+        "key": "/train_source_subject_means_path",
+        "kind": "path",
+        "s5": "/Users/sara/coding_projects/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/s5/fl/k2_natural/seed4601/regression/regression/train_source_subject_means.csv",
+        "rerun": "/private/tmp/claude-501/-Users-sara-coding-projects-Federated-learning-floor-vibration-classification-and-regression-analysis/c13e7647-2afc-4624-9e6a-6ef39f41d009/scratchpad/smoke/k2_natural_seed4601_regression/regression/train_source_subject_means.csv"
+      },
+      {
+        "key": "/training_comparison_plot",
+        "kind": "path",
+        "s5": "/Users/sara/coding_projects/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/s5/fl/k2_natural/seed4601/regression/regression/centralized_vs_flower_global_train_metrics.png",
+        "rerun": "/private/tmp/claude-501/-Users-sara-coding-projects-Federated-learning-floor-vibration-classification-and-regression-analysis/c13e7647-2afc-4624-9e6a-6ef39f41d009/scratchpad/smoke/k2_natural_seed4601_regression/regression/centralized_vs_flower_global_train_metrics.png"
+      }
+    ],
+    "setup_audit.json": [
+      {
+        "key": "/partition/clients[0]/classification_class_window_counts/subject_001_walking",
+        "kind": "label_field",
+        "s5": 156,
+        "rerun": "<absent>"
+      },
+      {
+        "key": "/partition/clients[0]/classification_class_window_counts/subject_002_walking",
+        "kind": "label_field",
+        "s5": 151,
+        "rerun": "<absent>"
+      },
+      {
+        "key": "/partition/clients[0]/classification_class_window_counts/subject_003_walking",
+        "kind": "label_field",
+        "s5": 124,
+        "rerun": "<absent>"
+      },
+      {
+        "key": "/partition/clients[0]/classification_class_window_counts/test_2:001_walking",
+        "kind": "label_field",
+        "s5": "<absent>",
+        "rerun": 156
+      },
+      {
+        "key": "/partition/clients[0]/classification_class_window_counts/test_2:002_walking",
+        "kind": "label_field",
+        "s5": "<absent>",
+        "rerun": 151
+      },
+      {
+        "key": "/partition/clients[0]/classification_class_window_counts/test_2:003_walking",
+        "kind": "label_field",
+        "s5": "<absent>",
+        "rerun": 124
+      },
+      {
+        "key": "/partition/clients[0]/identities",
+        "kind": "label_field",
+        "s5": "<absent>",
+        "rerun": [
+          "test_2:001",
+          "test_2:002",
+          "test_2:003"
+        ]
+      },
+      {
+        "key": "/partition/clients[0]/identity_run_counts",
+        "kind": "label_field",
+        "s5": "<absent>",
+        "rerun": {
+          "test_2:001": 17,
+          "test_2:002": 18,
+          "test_2:003": 17
+        }
+      },
+      {
+        "key": "/partition/clients[0]/subject_run_counts",
+        "kind": "label_field",
+        "s5": {
+          "001": 17,
+          "002": 18,
+          "003": 17
+        },
+        "rerun": "<absent>"
+      },
+      {
+        "key": "/partition/clients[0]/subjects",
+        "kind": "label_field",
+        "s5": [
+          "001",
+          "002",
+          "003"
+        ],
+        "rerun": "<absent>"
+      },
+      {
+        "key": "/partition/clients[1]/classification_class_window_counts/subject_003_walking",
+        "kind": "label_field",
+        "s5": 114,
+        "rerun": "<absent>"
+      },
+      {
+        "key": "/partition/clients[1]/classification_class_window_counts/subject_004_walking",
+        "kind": "label_field",
+        "s5": 102,
+        "rerun": "<absent>"
+      },
+      {
+        "key": "/partition/clients[1]/classification_class_window_counts/subject_005_walking",
+        "kind": "label_field",
+        "s5": 109,
+        "rerun": "<absent>"
+      },
+      {
+        "key": "/partition/clients[1]/classification_class_window_counts/subject_007_walking",
+        "kind": "label_field",
+        "s5": 98,
+        "rerun": "<absent>"
+      },
+      {
+        "key": "/partition/clients[1]/classification_class_window_counts/subject_008_walking",
+        "kind": "label_field",
+        "s5": 112,
+        "rerun": "<absent>"
+      },
+      {
+        "key": "/partition/clients[1]/classification_class_window_counts/testing_20251124:003_walking",
+        "kind": "label_field",
+        "s5": "<absent>",
+        "rerun": 114
+      },
+      {
+        "key": "/partition/clients[1]/classification_class_window_counts/testing_20251124:004_walking",
+        "kind": "label_field",
+        "s5": "<absent>",
+        "rerun": 102
+      },
+      {
+        "key": "/partition/clients[1]/classification_class_window_counts/testing_20251124:005_walking",
+        "kind": "label_field",
+        "s5": "<absent>",
+        "rerun": 109
+      },
+      {
+        "key": "/partition/clients[1]/classification_class_window_counts/testing_20251124:007_walking",
+        "kind": "label_field",
+        "s5": "<absent>",
+        "rerun": 98
+      },
+      {
+        "key": "/partition/clients[1]/classification_class_window_counts/testing_20251124:008_walking",
+        "kind": "label_field",
+        "s5": "<absent>",
+        "rerun": 112
+      },
+      {
+        "key": "/partition/clients[1]/identities",
+        "kind": "label_field",
+        "s5": "<absent>",
+        "rerun": [
+          "testing_20251124:003",
+          "testing_20251124:004",
+          "testing_20251124:005",
+          "testing_20251124:007",
+          "testing_20251124:008"
+        ]
+      },
+      {
+        "key": "/partition/clients[1]/identity_run_counts",
+        "kind": "label_field",
+        "s5": "<absent>",
+        "rerun": {
+          "testing_20251124:003": 12,
+          "testing_20251124:004": 12,
+          "testing_20251124:005": 13,
+          "testing_20251124:007": 11,
+          "testing_20251124:008": 12
+        }
+      },
+      {
+        "key": "/partition/clients[1]/subject_run_counts",
+        "kind": "label_field",
+        "s5": {
+          "003": 12,
+          "004": 12,
+          "005": 13,
+          "007": 11,
+          "008": 12
+        },
+        "rerun": "<absent>"
+      },
+      {
+        "key": "/partition/clients[1]/subjects",
+        "kind": "label_field",
+        "s5": [
+          "003",
+          "004",
+          "005",
+          "007",
+          "008"
+        ],
+        "rerun": "<absent>"
+      },
+      {
+        "key": "/partition_files/partitions",
+        "kind": "path",
+        "s5": "/Users/sara/coding_projects/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/s5/fl/k2_natural/seed4601/regression/partitions/combined_iid_client_partitions.json",
+        "rerun": "/private/tmp/claude-501/-Users-sara-coding-projects-Federated-learning-floor-vibration-classification-and-regression-analysis/c13e7647-2afc-4624-9e6a-6ef39f41d009/scratchpad/smoke/k2_natural_seed4601_regression/partitions/combined_iid_client_partitions.json"
+      },
+      {
+        "key": "/partition_files/run_manifest",
+        "kind": "path",
+        "s5": "/Users/sara/coding_projects/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/s5/fl/k2_natural/seed4601/regression/partitions/combined_iid_run_to_client.csv",
+        "rerun": "/private/tmp/claude-501/-Users-sara-coding-projects-Federated-learning-floor-vibration-classification-and-regression-analysis/c13e7647-2afc-4624-9e6a-6ef39f41d009/scratchpad/smoke/k2_natural_seed4601_regression/partitions/combined_iid_run_to_client.csv"
+      },
+      {
+        "key": "/partition_files/summary",
+        "kind": "path",
+        "s5": "/Users/sara/coding_projects/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/s5/fl/k2_natural/seed4601/regression/partitions/combined_iid_partition_summary.json",
+        "rerun": "/private/tmp/claude-501/-Users-sara-coding-projects-Federated-learning-floor-vibration-classification-and-regression-analysis/c13e7647-2afc-4624-9e6a-6ef39f41d009/scratchpad/smoke/k2_natural_seed4601_regression/partitions/combined_iid_partition_summary.json"
+      }
+    ]
+  },
+  "json_difference_kinds": {
+    "label_field": 48,
+    "path": 15,
+    "added_in_rerun": 3
+  },
+  "passed": true
+}

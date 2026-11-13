@@ -1,0 +1,190 @@
+{
+  "unit": "held-out run; windows with a background true class excluded",
+  "interval": "Wilson score, 95%",
+  "tie_rule": "majority-vote ties go to the higher run-mean probability, then the lower class index",
+  "majority_vote": {
+    "num_runs": 28,
+    "num_correct": 13,
+    "accuracy": 0.4642857142857143,
+    "wilson95": [
+      0.2953156998279538,
+      0.6418731076553209
+    ],
+    "macro_f1": 0.3,
+    "per_source": {
+      "test_2": {
+        "num_runs": 13,
+        "num_correct": 13,
+        "accuracy": 1.0,
+        "wilson95": [
+          0.7719046276458016,
+          0.9999999999999999
+        ]
+      },
+      "testing_20251124": {
+        "num_runs": 15,
+        "num_correct": 0,
+        "accuracy": 0.0,
+        "wilson95": [
+          0.0,
+          0.20388330103584862
+        ]
+      }
+    }
+  },
+  "mean_probability": {
+    "num_runs": 28,
+    "num_correct": 13,
+    "accuracy": 0.4642857142857143,
+    "wilson95": [
+      0.2953156998279538,
+      0.6418731076553209
+    ],
+    "macro_f1": 0.3,
+    "per_source": {
+      "test_2": {
+        "num_runs": 13,
+        "num_correct": 13,
+        "accuracy": 1.0,
+        "wilson95": [
+          0.7719046276458016,
+          0.9999999999999999
+        ]
+      },
+      "testing_20251124": {
+        "num_runs": 15,
+        "num_correct": 0,
+        "accuracy": 0.0,
+        "wilson95": [
+          0.0,
+          0.20388330103584862
+        ]
+      }
+    }
+  },
+  "per_subject_source": [
+    {
+      "source_id": "test_2",
+      "subject_id": "001",
+      "num_runs": 4,
+      "num_windows": 32,
+      "window_accuracy": 1.0,
+      "majority_vote_labels": "{\"test_2:001_walking\": 4}",
+      "mean_probability_labels": "{\"test_2:001_walking\": 4}",
+      "majority_vote_correct": 4,
+      "mean_probability_correct": 4
+    },
+    {
+      "source_id": "test_2",
+      "subject_id": "002",
+      "num_runs": 5,
+      "num_windows": 43,
+      "window_accuracy": 1.0,
+      "majority_vote_labels": "{\"test_2:002_walking\": 5}",
+      "mean_probability_labels": "{\"test_2:002_walking\": 5}",
+      "majority_vote_correct": 5,
+      "mean_probability_correct": 5
+    },
+    {
+      "source_id": "test_2",
+      "subject_id": "003",
+      "num_runs": 4,
+      "num_windows": 28,
+      "window_accuracy": 1.0,
+      "majority_vote_labels": "{\"test_2:003_walking\": 4}",
+      "mean_probability_labels": "{\"test_2:003_walking\": 4}",
+      "majority_vote_correct": 4,
+      "mean_probability_correct": 4
+    },
+    {
+      "source_id": "testing_20251124",
+      "subject_id": "003",
+      "num_runs": 3,
+      "num_windows": 28,
+      "window_accuracy": 0.0,
+      "majority_vote_labels": "{\"test_2:002_walking\": 3}",
+      "mean_probability_labels": "{\"test_2:002_walking\": 3}",
+      "majority_vote_correct": 0,
+      "mean_probability_correct": 0
+    },
+    {
+      "source_id": "testing_20251124",
+      "subject_id": "004",
+      "num_runs": 3,
+      "num_windows": 25,
+      "window_accuracy": 0.0,
+      "majority_vote_labels": "{\"test_2:002_walking\": 3}",
+      "mean_probability_labels": "{\"test_2:002_walking\": 3}",
+      "majority_vote_correct": 0,
+      "mean_probability_correct": 0
+    },
+    {
+      "source_id": "testing_20251124",
+      "subject_id": "005",
+      "num_runs": 3,
+      "num_windows": 25,
+      "window_accuracy": 0.0,
+      "majority_vote_labels": "{\"test_2:002_walking\": 3}",
+      "mean_probability_labels": "{\"test_2:002_walking\": 3}",
+      "majority_vote_correct": 0,
+      "mean_probability_correct": 0
+    },
+    {
+      "source_id": "testing_20251124",
+      "subject_id": "007",
+      "num_runs": 3,
+      "num_windows": 27,
+      "window_accuracy": 0.0,
+      "majority_vote_labels": "{\"test_2:002_walking\": 3}",
+      "mean_probability_labels": "{\"test_2:002_walking\": 3}",
+      "majority_vote_correct": 0,
+      "mean_probability_correct": 0
+    },
+    {
+      "source_id": "testing_20251124",
+      "subject_id": "008",
+      "num_runs": 3,
+      "num_windows": 30,
+      "window_accuracy": 0.0,
+      "majority_vote_labels": "{\"test_2:002_walking\": 3}",
+      "mean_probability_labels": "{\"test_2:002_walking\": 3}",
+      "majority_vote_correct": 0,
+      "mean_probability_correct": 0
+    }
+  ],
+  "training_sources": [
+    "test_2"
+  ],
+  "output_mapping": {
+    "no_walking": "no_walking",
+    "subject_001_walking": "test_2:001_walking",
+    "subject_002_walking": "test_2:002_walking",
+    "subject_003_walking": "test_2:003_walking",
+    "subject_004_walking": "testing_20251124:004_walking",
+    "subject_005_walking": "testing_20251124:005_walking",
+    "subject_007_walking": "testing_20251124:007_walking",
+    "subject_008_walking": "testing_20251124:008_walking"
+  },
+  "window_accuracy_all_test_windows": 0.46254071661237783,
+  "s5": {
+    "majority_vote": {
+      "num_correct": 13,
+      "num_runs": 28,
+      "accuracy": 0.4642857142857143,
+      "wilson95": [
+        0.2953156998279538,
+        0.6418731076553209
+      ]
+    },
+    "mean_probability": {
+      "num_correct": 13,
+      "num_runs": 28,
+      "accuracy": 0.4642857142857143,
+      "wilson95": [
+        0.2953156998279538,
+        0.6418731076553209
+      ]
+    },
+    "window_accuracy_all_test_windows": 0.46254071661237783
+  }
+}

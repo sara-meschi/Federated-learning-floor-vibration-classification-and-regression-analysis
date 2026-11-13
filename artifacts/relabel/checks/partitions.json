@@ -1,0 +1,975 @@
+{
+  "conditions": {
+    "k2_iid": {
+      "scheme": "iid",
+      "num_clients": 2,
+      "clients": [
+        {
+          "client_id": "client_0",
+          "num_runs": 56,
+          "num_identities": 8,
+          "identities": [
+            "test_2:001",
+            "test_2:002",
+            "test_2:003",
+            "testing_20251124:003",
+            "testing_20251124:004",
+            "testing_20251124:005",
+            "testing_20251124:007",
+            "testing_20251124:008"
+          ],
+          "identity_run_counts": {
+            "test_2:001": 9,
+            "test_2:002": 9,
+            "test_2:003": 8,
+            "testing_20251124:003": 6,
+            "testing_20251124:004": 6,
+            "testing_20251124:005": 6,
+            "testing_20251124:007": 6,
+            "testing_20251124:008": 6
+          },
+          "num_classification_windows": 618,
+          "num_regression_windows": 480
+        },
+        {
+          "client_id": "client_1",
+          "num_runs": 56,
+          "num_identities": 8,
+          "identities": [
+            "test_2:001",
+            "test_2:002",
+            "test_2:003",
+            "testing_20251124:003",
+            "testing_20251124:004",
+            "testing_20251124:005",
+            "testing_20251124:007",
+            "testing_20251124:008"
+          ],
+          "identity_run_counts": {
+            "test_2:001": 8,
+            "test_2:002": 9,
+            "test_2:003": 9,
+            "testing_20251124:003": 6,
+            "testing_20251124:004": 6,
+            "testing_20251124:005": 7,
+            "testing_20251124:007": 5,
+            "testing_20251124:008": 6
+          },
+          "num_classification_windows": 624,
+          "num_regression_windows": 486
+        }
+      ],
+      "s5_copies": [
+        "fl/k2_iid/seed4601/classification/partitions/combined_iid_run_to_client.csv",
+        "fl/k2_iid/seed4601/regression/partitions/combined_iid_run_to_client.csv",
+        "fl/k2_iid/seed4602/classification/partitions/combined_iid_run_to_client.csv",
+        "fl/k2_iid/seed4602/regression/partitions/combined_iid_run_to_client.csv",
+        "fl/k2_iid/seed4603/classification/partitions/combined_iid_run_to_client.csv",
+        "fl/k2_iid/seed4603/regression/partitions/combined_iid_run_to_client.csv",
+        "local_only/k2_iid/seed4601/classification/partitions/combined_iid_run_to_client.csv",
+        "local_only/k2_iid/seed4601/regression/partitions/combined_iid_run_to_client.csv"
+      ],
+      "s5_copies_byte_identical_to_rebuild": {
+        "fl/k2_iid/seed4601/classification/partitions/combined_iid_run_to_client.csv": true,
+        "fl/k2_iid/seed4601/regression/partitions/combined_iid_run_to_client.csv": true,
+        "fl/k2_iid/seed4602/classification/partitions/combined_iid_run_to_client.csv": true,
+        "fl/k2_iid/seed4602/regression/partitions/combined_iid_run_to_client.csv": true,
+        "fl/k2_iid/seed4603/classification/partitions/combined_iid_run_to_client.csv": true,
+        "fl/k2_iid/seed4603/regression/partitions/combined_iid_run_to_client.csv": true,
+        "local_only/k2_iid/seed4601/classification/partitions/combined_iid_run_to_client.csv": true,
+        "local_only/k2_iid/seed4601/regression/partitions/combined_iid_run_to_client.csv": true
+      },
+      "assignment_must_be_unchanged": true,
+      "assignment_unchanged": true,
+      "iid_identity_properties": {
+        "identity_training_run_totals": {
+          "test_2:001": 17,
+          "test_2:002": 18,
+          "test_2:003": 17,
+          "testing_20251124:003": 12,
+          "testing_20251124:004": 12,
+          "testing_20251124:005": 13,
+          "testing_20251124:007": 11,
+          "testing_20251124:008": 12
+        },
+        "clients": {
+          "client_0": {
+            "num_runs": 56,
+            "identity_run_counts": {
+              "test_2:001": 9,
+              "test_2:002": 9,
+              "test_2:003": 8,
+              "testing_20251124:003": 6,
+              "testing_20251124:004": 6,
+              "testing_20251124:005": 6,
+              "testing_20251124:007": 6,
+              "testing_20251124:008": 6
+            },
+            "holds_every_identity": true,
+            "holds_all_runs_of": []
+          },
+          "client_1": {
+            "num_runs": 56,
+            "identity_run_counts": {
+              "test_2:001": 8,
+              "test_2:002": 9,
+              "test_2:003": 9,
+              "testing_20251124:003": 6,
+              "testing_20251124:004": 6,
+              "testing_20251124:005": 7,
+              "testing_20251124:007": 5,
+              "testing_20251124:008": 6
+            },
+            "holds_every_identity": true,
+            "holds_all_runs_of": []
+          }
+        },
+        "every_client_holds_every_identity": true,
+        "no_client_holds_all_runs_of_an_identity": true
+      }
+    },
+    "k2_natural": {
+      "scheme": "natural",
+      "num_clients": 2,
+      "clients": [
+        {
+          "client_id": "client_0",
+          "num_runs": 52,
+          "num_identities": 3,
+          "identities": [
+            "test_2:001",
+            "test_2:002",
+            "test_2:003"
+          ],
+          "identity_run_counts": {
+            "test_2:001": 17,
+            "test_2:002": 18,
+            "test_2:003": 17
+          },
+          "num_classification_windows": 587,
+          "num_regression_windows": 431
+        },
+        {
+          "client_id": "client_1",
+          "num_runs": 60,
+          "num_identities": 5,
+          "identities": [
+            "testing_20251124:003",
+            "testing_20251124:004",
+            "testing_20251124:005",
+            "testing_20251124:007",
+            "testing_20251124:008"
+          ],
+          "identity_run_counts": {
+            "testing_20251124:003": 12,
+            "testing_20251124:004": 12,
+            "testing_20251124:005": 13,
+            "testing_20251124:007": 11,
+            "testing_20251124:008": 12
+          },
+          "num_classification_windows": 655,
+          "num_regression_windows": 535
+        }
+      ],
+      "s5_copies": [
+        "fl/k2_natural/seed4601/classification/partitions/combined_iid_run_to_client.csv",
+        "fl/k2_natural/seed4601/regression/partitions/combined_iid_run_to_client.csv",
+        "fl/k2_natural/seed4602/classification/partitions/combined_iid_run_to_client.csv",
+        "fl/k2_natural/seed4602/regression/partitions/combined_iid_run_to_client.csv",
+        "fl/k2_natural/seed4603/classification/partitions/combined_iid_run_to_client.csv",
+        "fl/k2_natural/seed4603/regression/partitions/combined_iid_run_to_client.csv",
+        "local_only/k2_natural/seed4601/classification/partitions/combined_iid_run_to_client.csv",
+        "local_only/k2_natural/seed4601/regression/partitions/combined_iid_run_to_client.csv"
+      ],
+      "s5_copies_byte_identical_to_rebuild": {
+        "fl/k2_natural/seed4601/classification/partitions/combined_iid_run_to_client.csv": true,
+        "fl/k2_natural/seed4601/regression/partitions/combined_iid_run_to_client.csv": true,
+        "fl/k2_natural/seed4602/classification/partitions/combined_iid_run_to_client.csv": true,
+        "fl/k2_natural/seed4602/regression/partitions/combined_iid_run_to_client.csv": true,
+        "fl/k2_natural/seed4603/classification/partitions/combined_iid_run_to_client.csv": true,
+        "fl/k2_natural/seed4603/regression/partitions/combined_iid_run_to_client.csv": true,
+        "local_only/k2_natural/seed4601/classification/partitions/combined_iid_run_to_client.csv": true,
+        "local_only/k2_natural/seed4601/regression/partitions/combined_iid_run_to_client.csv": true
+      },
+      "assignment_must_be_unchanged": true,
+      "assignment_unchanged": true
+    },
+    "k3_iid": {
+      "scheme": "iid",
+      "num_clients": 3,
+      "clients": [
+        {
+          "client_id": "client_0",
+          "num_runs": 37,
+          "num_identities": 8,
+          "identities": [
+            "test_2:001",
+            "test_2:002",
+            "test_2:003",
+            "testing_20251124:003",
+            "testing_20251124:004",
+            "testing_20251124:005",
+            "testing_20251124:007",
+            "testing_20251124:008"
+          ],
+          "identity_run_counts": {
+            "test_2:001": 6,
+            "test_2:002": 6,
+            "test_2:003": 6,
+            "testing_20251124:003": 4,
+            "testing_20251124:004": 4,
+            "testing_20251124:005": 4,
+            "testing_20251124:007": 3,
+            "testing_20251124:008": 4
+          },
+          "num_classification_windows": 413,
+          "num_regression_windows": 321
+        },
+        {
+          "client_id": "client_1",
+          "num_runs": 38,
+          "num_identities": 8,
+          "identities": [
+            "test_2:001",
+            "test_2:002",
+            "test_2:003",
+            "testing_20251124:003",
+            "testing_20251124:004",
+            "testing_20251124:005",
+            "testing_20251124:007",
+            "testing_20251124:008"
+          ],
+          "identity_run_counts": {
+            "test_2:001": 5,
+            "test_2:002": 6,
+            "test_2:003": 6,
+            "testing_20251124:003": 4,
+            "testing_20251124:004": 4,
+            "testing_20251124:005": 5,
+            "testing_20251124:007": 4,
+            "testing_20251124:008": 4
+          },
+          "num_classification_windows": 421,
+          "num_regression_windows": 328
+        },
+        {
+          "client_id": "client_2",
+          "num_runs": 37,
+          "num_identities": 8,
+          "identities": [
+            "test_2:001",
+            "test_2:002",
+            "test_2:003",
+            "testing_20251124:003",
+            "testing_20251124:004",
+            "testing_20251124:005",
+            "testing_20251124:007",
+            "testing_20251124:008"
+          ],
+          "identity_run_counts": {
+            "test_2:001": 6,
+            "test_2:002": 6,
+            "test_2:003": 5,
+            "testing_20251124:003": 4,
+            "testing_20251124:004": 4,
+            "testing_20251124:005": 4,
+            "testing_20251124:007": 4,
+            "testing_20251124:008": 4
+          },
+          "num_classification_windows": 408,
+          "num_regression_windows": 317
+        }
+      ],
+      "s5_copies": [
+        "fl/k3_iid/seed4601/classification/partitions/combined_iid_run_to_client.csv",
+        "fl/k3_iid/seed4601/regression/partitions/combined_iid_run_to_client.csv",
+        "local_only/k3_iid/seed4601/classification/partitions/combined_iid_run_to_client.csv",
+        "local_only/k3_iid/seed4601/regression/partitions/combined_iid_run_to_client.csv"
+      ],
+      "s5_copies_byte_identical_to_rebuild": {
+        "fl/k3_iid/seed4601/classification/partitions/combined_iid_run_to_client.csv": true,
+        "fl/k3_iid/seed4601/regression/partitions/combined_iid_run_to_client.csv": true,
+        "local_only/k3_iid/seed4601/classification/partitions/combined_iid_run_to_client.csv": true,
+        "local_only/k3_iid/seed4601/regression/partitions/combined_iid_run_to_client.csv": true
+      },
+      "assignment_must_be_unchanged": true,
+      "assignment_unchanged": true,
+      "iid_identity_properties": {
+        "identity_training_run_totals": {
+          "test_2:001": 17,
+          "test_2:002": 18,
+          "test_2:003": 17,
+          "testing_20251124:003": 12,
+          "testing_20251124:004": 12,
+          "testing_20251124:005": 13,
+          "testing_20251124:007": 11,
+          "testing_20251124:008": 12
+        },
+        "clients": {
+          "client_0": {
+            "num_runs": 37,
+            "identity_run_counts": {
+              "test_2:001": 6,
+              "test_2:002": 6,
+              "test_2:003": 6,
+              "testing_20251124:003": 4,
+              "testing_20251124:004": 4,
+              "testing_20251124:005": 4,
+              "testing_20251124:007": 3,
+              "testing_20251124:008": 4
+            },
+            "holds_every_identity": true,
+            "holds_all_runs_of": []
+          },
+          "client_1": {
+            "num_runs": 38,
+            "identity_run_counts": {
+              "test_2:001": 5,
+              "test_2:002": 6,
+              "test_2:003": 6,
+              "testing_20251124:003": 4,
+              "testing_20251124:004": 4,
+              "testing_20251124:005": 5,
+              "testing_20251124:007": 4,
+              "testing_20251124:008": 4
+            },
+            "holds_every_identity": true,
+            "holds_all_runs_of": []
+          },
+          "client_2": {
+            "num_runs": 37,
+            "identity_run_counts": {
+              "test_2:001": 6,
+              "test_2:002": 6,
+              "test_2:003": 5,
+              "testing_20251124:003": 4,
+              "testing_20251124:004": 4,
+              "testing_20251124:005": 4,
+              "testing_20251124:007": 4,
+              "testing_20251124:008": 4
+            },
+            "holds_every_identity": true,
+            "holds_all_runs_of": []
+          }
+        },
+        "every_client_holds_every_identity": true,
+        "no_client_holds_all_runs_of_an_identity": true
+      }
+    },
+    "k3_rho0.375": {
+      "scheme": "iid",
+      "num_clients": 3,
+      "clients": [
+        {
+          "client_id": "client_0",
+          "num_runs": 37,
+          "num_identities": 8,
+          "identities": [
+            "test_2:001",
+            "test_2:002",
+            "test_2:003",
+            "testing_20251124:003",
+            "testing_20251124:004",
+            "testing_20251124:005",
+            "testing_20251124:007",
+            "testing_20251124:008"
+          ],
+          "identity_run_counts": {
+            "test_2:001": 6,
+            "test_2:002": 6,
+            "test_2:003": 6,
+            "testing_20251124:003": 4,
+            "testing_20251124:004": 4,
+            "testing_20251124:005": 4,
+            "testing_20251124:007": 3,
+            "testing_20251124:008": 4
+          },
+          "num_classification_windows": 413,
+          "num_regression_windows": 321
+        },
+        {
+          "client_id": "client_1",
+          "num_runs": 38,
+          "num_identities": 8,
+          "identities": [
+            "test_2:001",
+            "test_2:002",
+            "test_2:003",
+            "testing_20251124:003",
+            "testing_20251124:004",
+            "testing_20251124:005",
+            "testing_20251124:007",
+            "testing_20251124:008"
+          ],
+          "identity_run_counts": {
+            "test_2:001": 5,
+            "test_2:002": 6,
+            "test_2:003": 6,
+            "testing_20251124:003": 4,
+            "testing_20251124:004": 4,
+            "testing_20251124:005": 5,
+            "testing_20251124:007": 4,
+            "testing_20251124:008": 4
+          },
+          "num_classification_windows": 421,
+          "num_regression_windows": 328
+        },
+        {
+          "client_id": "client_2",
+          "num_runs": 37,
+          "num_identities": 8,
+          "identities": [
+            "test_2:001",
+            "test_2:002",
+            "test_2:003",
+            "testing_20251124:003",
+            "testing_20251124:004",
+            "testing_20251124:005",
+            "testing_20251124:007",
+            "testing_20251124:008"
+          ],
+          "identity_run_counts": {
+            "test_2:001": 6,
+            "test_2:002": 6,
+            "test_2:003": 5,
+            "testing_20251124:003": 4,
+            "testing_20251124:004": 4,
+            "testing_20251124:005": 4,
+            "testing_20251124:007": 4,
+            "testing_20251124:008": 4
+          },
+          "num_classification_windows": 408,
+          "num_regression_windows": 317
+        }
+      ],
+      "channel_positions": {
+        "client_0": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "client_1": [
+          1,
+          2,
+          3,
+          6,
+          7
+        ],
+        "client_2": [
+          1,
+          2,
+          3,
+          8
+        ]
+      },
+      "s5_copies": [
+        "fl/k3_rho0.375/seed4601/classification/partitions/combined_iid_run_to_client.csv",
+        "fl/k3_rho0.375/seed4601/regression/partitions/combined_iid_run_to_client.csv",
+        "local_only/k3_rho0.375/seed4601/classification/partitions/combined_iid_run_to_client.csv",
+        "local_only/k3_rho0.375/seed4601/regression/partitions/combined_iid_run_to_client.csv"
+      ],
+      "s5_copies_byte_identical_to_rebuild": {
+        "fl/k3_rho0.375/seed4601/classification/partitions/combined_iid_run_to_client.csv": true,
+        "fl/k3_rho0.375/seed4601/regression/partitions/combined_iid_run_to_client.csv": true,
+        "local_only/k3_rho0.375/seed4601/classification/partitions/combined_iid_run_to_client.csv": true,
+        "local_only/k3_rho0.375/seed4601/regression/partitions/combined_iid_run_to_client.csv": true
+      },
+      "assignment_must_be_unchanged": true,
+      "assignment_unchanged": true,
+      "iid_identity_properties": {
+        "identity_training_run_totals": {
+          "test_2:001": 17,
+          "test_2:002": 18,
+          "test_2:003": 17,
+          "testing_20251124:003": 12,
+          "testing_20251124:004": 12,
+          "testing_20251124:005": 13,
+          "testing_20251124:007": 11,
+          "testing_20251124:008": 12
+        },
+        "clients": {
+          "client_0": {
+            "num_runs": 37,
+            "identity_run_counts": {
+              "test_2:001": 6,
+              "test_2:002": 6,
+              "test_2:003": 6,
+              "testing_20251124:003": 4,
+              "testing_20251124:004": 4,
+              "testing_20251124:005": 4,
+              "testing_20251124:007": 3,
+              "testing_20251124:008": 4
+            },
+            "holds_every_identity": true,
+            "holds_all_runs_of": []
+          },
+          "client_1": {
+            "num_runs": 38,
+            "identity_run_counts": {
+              "test_2:001": 5,
+              "test_2:002": 6,
+              "test_2:003": 6,
+              "testing_20251124:003": 4,
+              "testing_20251124:004": 4,
+              "testing_20251124:005": 5,
+              "testing_20251124:007": 4,
+              "testing_20251124:008": 4
+            },
+            "holds_every_identity": true,
+            "holds_all_runs_of": []
+          },
+          "client_2": {
+            "num_runs": 37,
+            "identity_run_counts": {
+              "test_2:001": 6,
+              "test_2:002": 6,
+              "test_2:003": 5,
+              "testing_20251124:003": 4,
+              "testing_20251124:004": 4,
+              "testing_20251124:005": 4,
+              "testing_20251124:007": 4,
+              "testing_20251124:008": 4
+            },
+            "holds_every_identity": true,
+            "holds_all_runs_of": []
+          }
+        },
+        "every_client_holds_every_identity": true,
+        "no_client_holds_all_runs_of_an_identity": true
+      }
+    },
+    "k3_rho0": {
+      "scheme": "iid",
+      "num_clients": 3,
+      "clients": [
+        {
+          "client_id": "client_0",
+          "num_runs": 37,
+          "num_identities": 8,
+          "identities": [
+            "test_2:001",
+            "test_2:002",
+            "test_2:003",
+            "testing_20251124:003",
+            "testing_20251124:004",
+            "testing_20251124:005",
+            "testing_20251124:007",
+            "testing_20251124:008"
+          ],
+          "identity_run_counts": {
+            "test_2:001": 6,
+            "test_2:002": 6,
+            "test_2:003": 6,
+            "testing_20251124:003": 4,
+            "testing_20251124:004": 4,
+            "testing_20251124:005": 4,
+            "testing_20251124:007": 3,
+            "testing_20251124:008": 4
+          },
+          "num_classification_windows": 413,
+          "num_regression_windows": 321
+        },
+        {
+          "client_id": "client_1",
+          "num_runs": 38,
+          "num_identities": 8,
+          "identities": [
+            "test_2:001",
+            "test_2:002",
+            "test_2:003",
+            "testing_20251124:003",
+            "testing_20251124:004",
+            "testing_20251124:005",
+            "testing_20251124:007",
+            "testing_20251124:008"
+          ],
+          "identity_run_counts": {
+            "test_2:001": 5,
+            "test_2:002": 6,
+            "test_2:003": 6,
+            "testing_20251124:003": 4,
+            "testing_20251124:004": 4,
+            "testing_20251124:005": 5,
+            "testing_20251124:007": 4,
+            "testing_20251124:008": 4
+          },
+          "num_classification_windows": 421,
+          "num_regression_windows": 328
+        },
+        {
+          "client_id": "client_2",
+          "num_runs": 37,
+          "num_identities": 8,
+          "identities": [
+            "test_2:001",
+            "test_2:002",
+            "test_2:003",
+            "testing_20251124:003",
+            "testing_20251124:004",
+            "testing_20251124:005",
+            "testing_20251124:007",
+            "testing_20251124:008"
+          ],
+          "identity_run_counts": {
+            "test_2:001": 6,
+            "test_2:002": 6,
+            "test_2:003": 5,
+            "testing_20251124:003": 4,
+            "testing_20251124:004": 4,
+            "testing_20251124:005": 4,
+            "testing_20251124:007": 4,
+            "testing_20251124:008": 4
+          },
+          "num_classification_windows": 408,
+          "num_regression_windows": 317
+        }
+      ],
+      "channel_positions": {
+        "client_0": [
+          1,
+          2,
+          3
+        ],
+        "client_1": [
+          4,
+          5,
+          6
+        ],
+        "client_2": [
+          7,
+          8
+        ]
+      },
+      "s5_copies": [
+        "fl/k3_rho0/seed4601/classification/partitions/combined_iid_run_to_client.csv",
+        "fl/k3_rho0/seed4601/regression/partitions/combined_iid_run_to_client.csv",
+        "local_only/k3_rho0/seed4601/classification/partitions/combined_iid_run_to_client.csv",
+        "local_only/k3_rho0/seed4601/regression/partitions/combined_iid_run_to_client.csv"
+      ],
+      "s5_copies_byte_identical_to_rebuild": {
+        "fl/k3_rho0/seed4601/classification/partitions/combined_iid_run_to_client.csv": true,
+        "fl/k3_rho0/seed4601/regression/partitions/combined_iid_run_to_client.csv": true,
+        "local_only/k3_rho0/seed4601/classification/partitions/combined_iid_run_to_client.csv": true,
+        "local_only/k3_rho0/seed4601/regression/partitions/combined_iid_run_to_client.csv": true
+      },
+      "assignment_must_be_unchanged": true,
+      "assignment_unchanged": true,
+      "iid_identity_properties": {
+        "identity_training_run_totals": {
+          "test_2:001": 17,
+          "test_2:002": 18,
+          "test_2:003": 17,
+          "testing_20251124:003": 12,
+          "testing_20251124:004": 12,
+          "testing_20251124:005": 13,
+          "testing_20251124:007": 11,
+          "testing_20251124:008": 12
+        },
+        "clients": {
+          "client_0": {
+            "num_runs": 37,
+            "identity_run_counts": {
+              "test_2:001": 6,
+              "test_2:002": 6,
+              "test_2:003": 6,
+              "testing_20251124:003": 4,
+              "testing_20251124:004": 4,
+              "testing_20251124:005": 4,
+              "testing_20251124:007": 3,
+              "testing_20251124:008": 4
+            },
+            "holds_every_identity": true,
+            "holds_all_runs_of": []
+          },
+          "client_1": {
+            "num_runs": 38,
+            "identity_run_counts": {
+              "test_2:001": 5,
+              "test_2:002": 6,
+              "test_2:003": 6,
+              "testing_20251124:003": 4,
+              "testing_20251124:004": 4,
+              "testing_20251124:005": 5,
+              "testing_20251124:007": 4,
+              "testing_20251124:008": 4
+            },
+            "holds_every_identity": true,
+            "holds_all_runs_of": []
+          },
+          "client_2": {
+            "num_runs": 37,
+            "identity_run_counts": {
+              "test_2:001": 6,
+              "test_2:002": 6,
+              "test_2:003": 5,
+              "testing_20251124:003": 4,
+              "testing_20251124:004": 4,
+              "testing_20251124:005": 4,
+              "testing_20251124:007": 4,
+              "testing_20251124:008": 4
+            },
+            "holds_every_identity": true,
+            "holds_all_runs_of": []
+          }
+        },
+        "every_client_holds_every_identity": true,
+        "no_client_holds_all_runs_of_an_identity": true
+      }
+    },
+    "k3_dirichlet0.1": {
+      "scheme": "dirichlet",
+      "num_clients": 3,
+      "clients": [
+        {
+          "client_id": "client_0",
+          "num_runs": 20,
+          "num_identities": 3,
+          "identities": [
+            "test_2:001",
+            "testing_20251124:003",
+            "testing_20251124:004"
+          ],
+          "identity_run_counts": {
+            "test_2:001": 1,
+            "testing_20251124:003": 7,
+            "testing_20251124:004": 12
+          },
+          "num_classification_windows": 222,
+          "num_regression_windows": 181
+        },
+        {
+          "client_id": "client_1",
+          "num_runs": 17,
+          "num_identities": 2,
+          "identities": [
+            "testing_20251124:003",
+            "testing_20251124:005"
+          ],
+          "identity_run_counts": {
+            "testing_20251124:003": 4,
+            "testing_20251124:005": 13
+          },
+          "num_classification_windows": 179,
+          "num_regression_windows": 145
+        },
+        {
+          "client_id": "client_2",
+          "num_runs": 75,
+          "num_identities": 6,
+          "identities": [
+            "test_2:001",
+            "test_2:002",
+            "test_2:003",
+            "testing_20251124:003",
+            "testing_20251124:007",
+            "testing_20251124:008"
+          ],
+          "identity_run_counts": {
+            "test_2:001": 16,
+            "test_2:002": 18,
+            "test_2:003": 17,
+            "testing_20251124:003": 1,
+            "testing_20251124:007": 11,
+            "testing_20251124:008": 12
+          },
+          "num_classification_windows": 841,
+          "num_regression_windows": 640
+        }
+      ],
+      "dirichlet": {
+        "alpha": 0.1,
+        "min_identities_per_client": 2,
+        "draws": 1,
+        "floor_applied": false,
+        "floor_note": "Dirichlet draws that left a client with fewer than 2 identities were redrawn; 0 draw(s) rejected before acceptance.",
+        "redraws": 0,
+        "identity_client_run_counts": {
+          "test_2:001": [
+            1,
+            0,
+            16
+          ],
+          "test_2:002": [
+            0,
+            0,
+            18
+          ],
+          "test_2:003": [
+            0,
+            0,
+            17
+          ],
+          "testing_20251124:003": [
+            7,
+            4,
+            1
+          ],
+          "testing_20251124:004": [
+            12,
+            0,
+            0
+          ],
+          "testing_20251124:005": [
+            0,
+            13,
+            0
+          ],
+          "testing_20251124:007": [
+            0,
+            0,
+            11
+          ],
+          "testing_20251124:008": [
+            0,
+            0,
+            12
+          ]
+        }
+      },
+      "s5_copies": [
+        "fl/k3_dirichlet0.1/seed4601/classification/partitions/combined_iid_run_to_client.csv",
+        "fl/k3_dirichlet0.1/seed4601/regression/partitions/combined_iid_run_to_client.csv",
+        "fl/k3_dirichlet0.1/seed4602/classification/partitions/combined_iid_run_to_client.csv",
+        "fl/k3_dirichlet0.1/seed4603/classification/partitions/combined_iid_run_to_client.csv",
+        "local_only/k3_dirichlet0.1/seed4601/classification/partitions/combined_iid_run_to_client.csv",
+        "local_only/k3_dirichlet0.1/seed4601/regression/partitions/combined_iid_run_to_client.csv",
+        "local_only/k3_dirichlet0.1/seed4602/classification/partitions/combined_iid_run_to_client.csv",
+        "local_only/k3_dirichlet0.1/seed4603/classification/partitions/combined_iid_run_to_client.csv"
+      ],
+      "s5_copies_byte_identical_to_rebuild": {
+        "fl/k3_dirichlet0.1/seed4601/classification/partitions/combined_iid_run_to_client.csv": false,
+        "fl/k3_dirichlet0.1/seed4601/regression/partitions/combined_iid_run_to_client.csv": false,
+        "fl/k3_dirichlet0.1/seed4602/classification/partitions/combined_iid_run_to_client.csv": false,
+        "fl/k3_dirichlet0.1/seed4603/classification/partitions/combined_iid_run_to_client.csv": false,
+        "local_only/k3_dirichlet0.1/seed4601/classification/partitions/combined_iid_run_to_client.csv": false,
+        "local_only/k3_dirichlet0.1/seed4601/regression/partitions/combined_iid_run_to_client.csv": false,
+        "local_only/k3_dirichlet0.1/seed4602/classification/partitions/combined_iid_run_to_client.csv": false,
+        "local_only/k3_dirichlet0.1/seed4603/classification/partitions/combined_iid_run_to_client.csv": false
+      }
+    },
+    "k3_dirichlet0.3": {
+      "scheme": "dirichlet",
+      "num_clients": 3,
+      "clients": [
+        {
+          "client_id": "client_0",
+          "num_runs": 18,
+          "num_identities": 3,
+          "identities": [
+            "test_2:001",
+            "testing_20251124:003",
+            "testing_20251124:004"
+          ],
+          "identity_run_counts": {
+            "test_2:001": 4,
+            "testing_20251124:003": 5,
+            "testing_20251124:004": 9
+          },
+          "num_classification_windows": 203,
+          "num_regression_windows": 163
+        },
+        {
+          "client_id": "client_1",
+          "num_runs": 21,
+          "num_identities": 5,
+          "identities": [
+            "test_2:001",
+            "testing_20251124:003",
+            "testing_20251124:005",
+            "testing_20251124:007",
+            "testing_20251124:008"
+          ],
+          "identity_run_counts": {
+            "test_2:001": 2,
+            "testing_20251124:003": 4,
+            "testing_20251124:005": 13,
+            "testing_20251124:007": 1,
+            "testing_20251124:008": 1
+          },
+          "num_classification_windows": 228,
+          "num_regression_windows": 184
+        },
+        {
+          "client_id": "client_2",
+          "num_runs": 73,
+          "num_identities": 7,
+          "identities": [
+            "test_2:001",
+            "test_2:002",
+            "test_2:003",
+            "testing_20251124:003",
+            "testing_20251124:004",
+            "testing_20251124:007",
+            "testing_20251124:008"
+          ],
+          "identity_run_counts": {
+            "test_2:001": 11,
+            "test_2:002": 18,
+            "test_2:003": 17,
+            "testing_20251124:003": 3,
+            "testing_20251124:004": 3,
+            "testing_20251124:007": 10,
+            "testing_20251124:008": 11
+          },
+          "num_classification_windows": 811,
+          "num_regression_windows": 619
+        }
+      ],
+      "dirichlet": {
+        "alpha": 0.3,
+        "min_identities_per_client": 2,
+        "draws": 1,
+        "floor_applied": false,
+        "floor_note": "Dirichlet draws that left a client with fewer than 2 identities were redrawn; 0 draw(s) rejected before acceptance.",
+        "redraws": 0,
+        "identity_client_run_counts": {
+          "test_2:001": [
+            4,
+            2,
+            11
+          ],
+          "test_2:002": [
+            0,
+            0,
+            18
+          ],
+          "test_2:003": [
+            0,
+            0,
+            17
+          ],
+          "testing_20251124:003": [
+            5,
+            4,
+            3
+          ],
+          "testing_20251124:004": [
+            9,
+            0,
+            3
+          ],
+          "testing_20251124:005": [
+            0,
+            13,
+            0
+          ],
+          "testing_20251124:007": [
+            0,
+            1,
+            10
+          ],
+          "testing_20251124:008": [
+            0,
+            1,
+            11
+          ]
+        }
+      },
+      "s5_copies": [],
+      "s5_copies_byte_identical_to_rebuild": {}
+    }
+  },
+  "passed": true
+}

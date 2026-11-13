@@ -1,0 +1,36 @@
+[11-08 18:59] 1/32 centralized/classification/seed4601 completed 6.1 min | window acc 1.000 | run acc (vote) 28/28 [0.88, 1.00] | 0.1 h elapsed, ~22.7 h left
+[11-08 19:40] 2/32 fl/k2_natural/seed4601/classification completed 41.0 min | window acc 0.997 | run acc (vote) 28/28 [0.88, 1.00] | 0.8 h elapsed, ~21.2 h left
+[11-08 20:19] 3/32 fl/k2_iid/seed4601/classification completed 38.5 min | window acc 1.000 | run acc (vote) 28/28 [0.88, 1.00] | 1.4 h elapsed, ~20.6 h left
+[11-08 20:57] 4/32 fl/k2_natural/seed4602/classification completed 38.2 min | window acc 0.997 | run acc (vote) 28/28 [0.88, 1.00] | 2.1 h elapsed, ~19.9 h left
+[11-08 21:35] 5/32 fl/k2_iid/seed4602/classification completed 37.7 min | window acc 1.000 | run acc (vote) 28/28 [0.88, 1.00] | 2.7 h elapsed, ~19.2 h left
+[11-08 22:12] 6/32 fl/k2_natural/seed4603/classification completed 37.6 min | window acc 0.997 | run acc (vote) 28/28 [0.88, 1.00] | 3.3 h elapsed, ~18.5 h left
+[11-08 22:49] 7/32 fl/k2_iid/seed4603/classification completed 37.0 min | window acc 1.000 | run acc (vote) 28/28 [0.88, 1.00] | 3.9 h elapsed, ~17.8 h left
+[11-08 22:56] 8/32 centralized/classification/seed4602 completed 6.2 min | window acc 1.000 | run acc (vote) 28/28 [0.88, 1.00] | 4.0 h elapsed, ~17.7 h left
+[11-08 23:02] 9/32 centralized/classification/seed4603 completed 6.3 min | window acc 0.997 | run acc (vote) 28/28 [0.88, 1.00] | 4.1 h elapsed, ~17.6 h left
+[11-08 23:33] 10/32 fl/k3_iid/seed4601/classification completed 31.5 min | window acc 1.000 | run acc (vote) 28/28 [0.88, 1.00] | 4.7 h elapsed, ~17.0 h left
+[11-09 00:06] 11/32 fl/k3_rho0.375/seed4601/classification completed 32.4 min | window acc 0.984 | run acc (vote) 28/28 [0.88, 1.00] | 5.2 h elapsed, ~16.5 h left
+[11-09 00:40] 12/32 fl/k3_rho0/seed4601/classification completed 34.4 min | window acc 0.971 | run acc (vote) 28/28 [0.88, 1.00] | 5.8 h elapsed, ~15.9 h left
+[11-09 01:22] 13/32 fl/k3_dirichlet0.1/seed4601/classification completed 41.8 min | window acc 0.834 | run acc (vote) 22/28 [0.60, 0.90] | 6.5 h elapsed, ~13.7 h left
+[11-09 01:54] 14/32 fl/k3_dirichlet0.1/seed4601/regression completed 31.8 min | trained | skill +0.079 [-0.106, +0.226] | RMSE 0.0389 vs lookup 0.0405 | gates degeneracy✓ trained✓ | 7.0 h elapsed, ~13.2 h left
+[11-09 02:34] 15/32 fl/k3_dirichlet0.1/seed4602/classification completed 40.1 min | window acc 0.837 | run acc (vote) 22/28 [0.60, 0.90] | 7.7 h elapsed, ~12.5 h left
+[11-09 03:14] 16/32 fl/k3_dirichlet0.1/seed4603/classification completed 39.8 min | window acc 0.834 | run acc (vote) 22/28 [0.60, 0.90] | 8.3 h elapsed, ~11.8 h left
+[11-09 03:53] 17/32 fl/k3_dirichlet0.3/seed4601/classification completed 38.9 min | window acc 0.912 | run acc (vote) 25/28 [0.73, 0.96] | 9.0 h elapsed, ~11.1 h left
+[11-09 04:22] 18/32 fl/k3_dirichlet0.3/seed4601/regression completed 28.9 min | trained | skill -0.240 [-4.913, +0.476] | RMSE 0.0451 vs lookup 0.0405 | gates degeneracy✓ trained✓ | 9.5 h elapsed, ~10.6 h left
+[11-09 05:01] 19/32 fl/k3_dirichlet0.3/seed4602/classification completed 38.7 min | window acc 0.915 | run acc (vote) 25/28 [0.73, 0.96] | 10.1 h elapsed, ~9.9 h left
+[11-09 05:40] 20/32 fl/k3_dirichlet0.3/seed4603/classification completed 39.1 min | window acc 0.915 | run acc (vote) 25/28 [0.73, 0.96] | 10.8 h elapsed, ~9.2 h left
+[11-09 05:40] STOP-BY 11-09 06:00: not starting local_only/k2_iid/seed4601/classification (estimate 48 min x 1.10 would end 06:33). Skipped this session: 12 job(s), ~9.2 h. Next in line: local_only/k2_iid/seed4601/classification.
+[11-09 13:53] 21/32 local_only/k2_iid/seed4601/classification completed 48.3 min | 2 clients: run acc (vote) 1.000 ± 0.000, window acc 1.000 | 0.8 h elapsed, ~8.4 h left
+[11-09 13:53] STOP-BY 11-09 14:00: not starting local_only/k3_iid/seed4601/classification (estimate 45 min x 1.10 would end 14:42). Skipped this session: 11 job(s), ~8.4 h. Next in line: local_only/k3_iid/seed4601/classification.
+[11-09 23:18] 22/32 local_only/k3_iid/seed4601/classification completed 41.1 min | 3 clients: run acc (vote) 0.988 ± 0.021, window acc 0.976 | 0.7 h elapsed, ~7.5 h left
+[11-10 00:01] 23/32 local_only/k3_rho0.375/seed4601/classification completed 42.9 min | 3 clients: run acc (vote) 0.976 ± 0.041, window acc 0.964 | 1.4 h elapsed, ~6.9 h left
+[11-10 00:44] 24/32 local_only/k3_rho0/seed4601/classification completed 43.2 min | 3 clients: run acc (vote) 0.976 ± 0.041, window acc 0.932 | 2.1 h elapsed, ~6.2 h left
+[11-10 01:28] 25/32 local_only/k3_dirichlet0.1/seed4601/classification completed 43.5 min | 3 clients: run acc (vote) 0.452 ± 0.297, window acc 0.527 | 2.8 h elapsed, ~4.7 h left
+[11-10 02:00] 26/32 local_only/k3_dirichlet0.1/seed4601/regression completed_with_failed_clients FLAT 32.0 min | 2 of 3 clients in mean: skill -0.140 ± 0.457 | 1 of 3 clients failed | {"client_0": "trained", "client_1": "trained", "client_2": "collapsed"} | 3.4 h elapsed, ~4.2 h left
+[11-10 02:43] 27/32 local_only/k3_dirichlet0.1/seed4602/classification completed 43.1 min | 3 clients: run acc (vote) 0.452 ± 0.297, window acc 0.526 | 4.1 h elapsed, ~3.4 h left
+[11-10 03:26] 28/32 local_only/k3_dirichlet0.1/seed4603/classification completed 42.9 min | 3 clients: run acc (vote) 0.452 ± 0.297, window acc 0.523 | 4.8 h elapsed, ~2.7 h left
+[11-10 04:08] 29/32 local_only/k3_dirichlet0.3/seed4601/classification completed 42.3 min | 3 clients: run acc (vote) 0.607 ± 0.270, window acc 0.698 | 5.5 h elapsed, ~2.0 h left
+[11-10 04:40] 30/32 local_only/k3_dirichlet0.3/seed4601/regression completed 31.8 min | 3 of 3 clients in mean: skill -0.227 ± 0.150 | 0 of 3 clients failed | {"client_0": "trained", "client_1": "trained", "client_2": "trained"} | 6.1 h elapsed, ~1.4 h left
+[11-10 05:22] 31/32 local_only/k3_dirichlet0.3/seed4602/classification completed 42.3 min | 3 clients: run acc (vote) 0.595 ± 0.251, window acc 0.689 | 6.8 h elapsed, ~0.7 h left
+[11-10 05:22] STOP-BY 11-10 06:00: not starting local_only/k3_dirichlet0.3/seed4603/classification (estimate 43 min x 1.10 would end 06:10). Skipped this session: 1 job(s), ~0.7 h. Next in line: local_only/k3_dirichlet0.3/seed4603/classification.
+[11-10 14:51] 32/32 local_only/k3_dirichlet0.3/seed4603/classification completed 42.9 min | 3 clients: run acc (vote) 0.607 ± 0.270, window acc 0.695 | 0.7 h elapsed, ~0.0 h left
+[11-10 14:51] QUEUE END: 32/32 terminal; crashed (re-run on restart): none

@@ -1,0 +1,61 @@
+{
+  "job": "/Users/sara/coding_projects/Federated-learning-floor-vibration-classification-and-regression-analysis/artifacts/s5/local_only/k2_natural/seed4601/classification",
+  "clients": {
+    "client_0": {
+      "training_sources": [
+        "test_2"
+      ],
+      "run_vote": "13/28",
+      "run_vote_wilson95": [
+        0.2953156998279538,
+        0.6418731076553209
+      ],
+      "run_meanprob": "13/28",
+      "run_meanprob_wilson95": [
+        0.2953156998279538,
+        0.6418731076553209
+      ],
+      "window_accuracy": 0.46254071661237783,
+      "s5_run_vote": "13/28",
+      "s5_window_accuracy": 0.46254071661237783
+    },
+    "client_1": {
+      "training_sources": [
+        "testing_20251124"
+      ],
+      "run_vote": "15/28",
+      "run_vote_wilson95": [
+        0.358126892344679,
+        0.7046843001720462
+      ],
+      "run_meanprob": "15/28",
+      "run_meanprob_wilson95": [
+        0.358126892344679,
+        0.7046843001720462
+      ],
+      "window_accuracy": 0.6188925081433225,
+      "s5_run_vote": "18/28",
+      "s5_window_accuracy": 0.6710097719869706
+    }
+  },
+  "run_vote_accuracy_over_clients": {
+    "mean": 0.5,
+    "std": 0.05050762722761051,
+    "n": 2
+  },
+  "run_meanprob_accuracy_over_clients": {
+    "mean": 0.5,
+    "std": 0.05050762722761051,
+    "n": 2
+  },
+  "window_accuracy_over_clients": {
+    "mean": 0.5407166123778502,
+    "std": 0.1105574120421964,
+    "n": 2
+  },
+  "s5_run_vote_accuracy_over_clients": {
+    "mean": 0.5535714285714286,
+    "std": 0.12626906806902638,
+    "n": 2
+  }
+}

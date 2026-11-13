@@ -4,6 +4,263 @@ What changed, and every number that moved as a result. Newest first.
 
 ---
 
+## Relabel — Results (2026-11-10)
+
+The relabel queue finished: **32 of 32 jobs terminal, none crashed.** Every job ran on
+`ff5056f`, in four sessions:
+
+| Session | Jobs |
+|---|---|
+| 2026-11-08 18:53 → 2026-11-09 05:40 | 1–20 |
+| 2026-11-09 13:04 → 13:53 | 21 |
+| 2026-11-09 22:37 → 2026-11-10 05:22 | 22–31 |
+| 2026-11-10 14:08 → 14:51 | 32 |
+
+- **The stopped start:** a 13:00 start on 2026-11-09 was stopped by hand after 3.6 min.
+  Job 21's partial folder was set aside as `classification.incomplete-20261109-130454` and
+  the job re-ran from scratch.
+- **Preflight** passed at all five starts. Every time, the five kept assignments were
+  byte-identical to S5's, and both Dirichlet partitions were accepted on the first draw.
+  That is the condition for keeping S5's K=3 ρ regression (PI, 2026-11-08).
+
+**Measured wall time:** 19.0 h of training over 32 jobs.
+
+| Job type | Minutes |
+|---|---|
+| Centralized | 6.1–6.3 |
+| FL classification | 31.5–41.8 |
+| FL regression | 28.9–31.8 |
+| Local-only classification | 41.1–48.3 |
+| Local-only regression | 31.8–32.0 |
+
+**Setting, gates and reporting are S5's, unchanged:**
+- FedAvg, E=5, persistent client optimizer, 60 rounds, `client_num_cpus: 3`;
+- split seed 4601; every model is evaluated on the same 28 held-out test runs with all
+  9 channels;
+- classification has **9 classes** (8 identities + `no_walking`);
+- Wilson 95% intervals; skill against the source/subject train-mean lookup (RMSE
+  0.0405 m/s in every run), with a run-level bootstrap 95% CI;
+- the same three outcome labels and trained-gate rules.
+
+### Summary
+
+Cells marked **kept** are the S5 results that the relabel entry below keeps; they were
+not rerun. Local-only natural K=2 classification is the step-3 **re-score**. Everything
+else is new output from this queue.
+
+| Condition | Classification: FL (centralized for row 1) | Classification: local-only (mean ± std over clients) | Regression: FL (centralized for row 1) | Regression: local-only (mean ± std over trained clients) |
+|---|---|---|---|---|
+| **Centralized** (3 init seeds) | 28/28 [0.879, 1.000] on every seed | — | kept: residual +0.098 ± 0.021, 3 of 3 trained; absolute −1.739 ± 0.446 | — |
+| **K=2 IID** (FL: 3 seeds) | 28/28 [0.879, 1.000] on every seed | 1.000 ± 0.000. Each client 28/28. | kept: +0.172 ± 0.096, 3 of 3 trained | kept: +0.010 ± 0.358 |
+| **K=2 natural** (FL: 3 seeds) | 28/28 [0.879, 1.000] on every seed | re-score: 0.500 ± 0.051. client_0 13/28 [0.295, 0.642]; client_1 15/28 [0.358, 0.705]. | kept: per seed, 1 of 3 seeds collapsed (−0.207, −0.123, collapsed) | kept: −0.726 ± 0.869 |
+| **K=3 ρ = 1.0** (= IID) | 28/28 [0.879, 1.000] | 0.988 ± 0.021. 27/28 [0.823, 0.994], 28/28, 28/28. | kept: +0.101 [−2.263, +0.480], trained | kept: −0.125 ± 0.343 |
+| **K=3 ρ = 0.375** | 28/28 [0.879, 1.000] | 0.976 ± 0.041. 28/28, 28/28, 26/28 [0.774, 0.980]. | kept: +0.046, did not train | kept: −0.329 ± 0.389 |
+| **K=3 ρ = 0** | 28/28 [0.879, 1.000] | 0.976 ± 0.041. 28/28, 28/28, 26/28 [0.774, 0.980]. | kept: collapsed | kept: −0.073 ± 0.122 over 2; 1 of 3 clients failed |
+| **K=3 Dirichlet α = 0.1** (classification: 3 seeds; regression: seed 4601) | **22/28 [0.605, 0.898] on every seed** | **0.452 ± 0.297 on every seed.** Clients 10/28 [0.207, 0.542], 6/28 [0.102, 0.395], 22/28 [0.605, 0.898]. | **+0.079 [−0.106, +0.226], trained** | **−0.140 ± 0.457 over 2 clients; 1 of 3 clients failed** (client_2 collapsed) |
+| **K=3 Dirichlet α = 0.3** (new; same seeds) | **25/28 [0.728, 0.963] on every seed** | **4601: 0.607 ± 0.270** (10, 16, 25 of 28). **4602: 0.595 ± 0.251** (10, 16, 24). **4603: 0.607 ± 0.270** (10, 16, 25). | **−0.240 [−4.913, +0.476], trained** | **−0.227 ± 0.150, 0 of 3 clients failed** |
+
+What the table shows (description, not interpretation):
+- **Under 9 classes, classification is at ceiling** (28/28) in every centralized and FL
+  condition except Dirichlet, as under 8 classes.
+- **Dirichlet FL is below ceiling at both α:** 22/28 at α = 0.1 and 25/28 at α = 0.3.
+  Local-only means are below FL at both α.
+- **Regression:** no model shows positive skill distinguishable from zero. No overall
+  interval has its lower bound above 0. Entirely below zero overall: local-only α = 0.3
+  client_0 (−0.362 [−1.855, −0.064]).
+
+### Regression detail (new runs only)
+
+Per-source intervals are resampled within the source (Test_2: 13 runs; 20251124: 15 runs).
+"Gated MSE" is the value the trained gate read: global-train for FL, own-data for a
+local-only client.
+
+| Run | Label | Skill, overall | Skill, Test_2 | Skill, 20251124 | RMSE (m/s) | R² within subject | Gated MSE | Spread ratio |
+|---|---|---|---|---|---|---|---|---|
+| FL Dirichlet α=0.1 | trained | +0.079 [−0.106, +0.226] | +0.162 [−0.216, +0.458] | +0.072 [−0.174, +0.230] | 0.0389 | 0.004 | 0.887 | 0.197 |
+| FL Dirichlet α=0.3 | trained | −0.240 [−4.913, +0.476] | −2.065 [−3.768, −0.224] | −0.070 [−6.480, +0.574] | 0.0451 | −0.341 | 0.284 | 1.77 |
+| Local-only α=0.1 client_0 | trained | −0.463 [−2.985, +0.110] | −3.068 [−7.076, −1.716] | −0.221 [−2.778, +0.248] | 0.0490 | −0.583 | 1.2e-6 | 0.648 |
+| Local-only α=0.1 client_1 | trained | +0.183 [−0.391, +0.378] | +0.053 [−0.926, +0.468] | +0.195 [−0.593, +0.443] | 0.0366 | 0.116 | 1.3e-6 | 0.484 |
+| Local-only α=0.1 client_2 | **collapsed** | +0.003 [−0.001, +0.008] | +0.012 | +0.002 | 0.0405 | −0.078 | 1.000 | **0 (1 distinct value)** |
+| Local-only α=0.3 client_0 | trained | −0.362 [−1.855, −0.064] | −1.660 [−3.592, −0.616] | −0.241 [−1.822, +0.026] | 0.0473 | −0.473 | 4.8e-4 | 0.606 |
+| Local-only α=0.3 client_1 | trained | −0.065 [−1.569, +0.234] | −1.469 [−5.148, −0.080] | +0.065 [−1.480, +0.559] | 0.0418 | −0.152 | 1.1e-4 | 0.664 |
+| Local-only α=0.3 client_2 | trained | −0.254 [−5.301, +0.526] | −1.590 [−2.675, −0.213] | −0.129 [−7.380, +0.619] | 0.0454 | −0.356 | 4.6e-6 | 1.87 |
+
+- **Global-train standardized MSE of the local-only clients** (reported, not gated):
+  - α = 0.1: 1.231, 0.888 and 1.000;
+  - α = 0.3: 0.987, 1.124 and 1.129.
+- **Test_2 skill has an interval entirely below 0** in FL α = 0.3, local-only α = 0.1
+  client_0, and all three local-only α = 0.3 clients.
+- **FL α = 0.1 passes the trained gate** at 0.887 against the 0.95 threshold.
+
+### The collapsed client: local-only Dirichlet α = 0.1 regression, client_2
+
+**Reported as measured, per the S5 precedent** (natural K=2 seed 4603, K=3 ρ = 0). The
+folder and its `degenerate_model_check_FAILED.json` are kept unchanged, and it is not
+re-run.
+
+- **Outcome:** the job is `completed_with_failed_clients` and FLAT. The runner exited 1
+  with `DegenerateModelError` after writing every client's outputs, as S5's local-only
+  ρ = 0 job did.
+- **Measured:** one distinct predicted residual across all 238 test windows, output std 0.0.
+  Own-data standardized MSE 0.99995; global-train 1.00005. Skill +0.003 is the lookup
+  itself.
+- **This is the R1 plateau mechanism.** client_2's own-data loss starts round 1 at 1.0107
+  and ends round 60 at 1.0106. Every round ends where it started, and the zero-initialized
+  last layer never leaves "predict zero residual".
+- **Partition:** client_2 is the largest client, with 75 of 112 training runs and 640
+  regression windows. It holds 6 identities: test_2:001 16 runs, :002 18, :003 17;
+  testing_20251124:003 1, :007 11, :008 12.
+- **The other clients:** client_0 and client_1 trained, with own-data 1.2e-6 and 1.3e-6.
+- **No S5 comparison:** S5's local-only Dirichlet client_2 trained, but on the S5
+  partition (76 runs, grouped by subject ID), which no longer exists. The two clients are
+  not the same data.
+
+### Classification detail
+
+**Window accuracy:**
+
+| Condition | Per seed (4601 / 4602 / 4603) | Mean |
+|---|---|---|
+| Centralized | 1.0000 / 1.0000 / 0.9967 | 0.9989 ± 0.0019 |
+| FL K=2 IID | 1.0000 / 1.0000 / 1.0000 | — |
+| FL K=2 natural | 0.9967 / 0.9967 / 0.9967 | — |
+| FL Dirichlet α = 0.1 | 0.8339 / 0.8371 / 0.8339 | 0.8350 ± 0.0019 |
+| FL Dirichlet α = 0.3 | 0.9121 / 0.9153 / 0.9153 | 0.9142 ± 0.0019 |
+| Local-only Dirichlet α = 0.1, mean over clients | 0.5266 / 0.5255 / 0.5233 | 0.5252 ± 0.0017 |
+| Local-only Dirichlet α = 0.3, mean over clients | 0.6982 / 0.6895 / 0.6949 | 0.6942 ± 0.0044 |
+
+Single seed (4601):
+- **FL K=3:** ρ = 1.0 / 0.375 / 0 give 1.0000 / 0.9837 / 0.9707.
+- **Local-only, mean over clients:**
+  - K=2 IID 1.000;
+  - K=3 ρ = 1.0 / 0.375 / 0: 0.9761 / 0.9642 / 0.9316.
+
+**Run level:**
+- Majority vote and mean probability give the same run counts everywhere except
+  local-only α = 0.1 seed 4603 client_2: 22 by vote, 21 by mean probability. One
+  testing_20251124:003 run goes to :008.
+- **Run macro-F1** is 1.000 for every centralized and non-Dirichlet FL model.
+  - Dirichlet FL α = 0.1: 0.708 / 0.677 / 0.690.
+  - Dirichlet FL α = 0.3: 0.844 / 0.844 / 0.857.
+
+**Dirichlet FL errors.** Every error is a testing_20251124 run. Test_2 is 13/13 on every
+model.
+
+| | Errors per seed (4601 / 4602 / 4603) | By source |
+|---|---|---|
+| α = 0.1 | testing_20251124:004 → :007, all 3 runs on every seed. testing_20251124:005, all 3 runs: → `no_walking` 3 / 1 / 2, → :003 0 / 2 / 1. | 20251124 9/15 [0.357, 0.802] |
+| α = 0.3 | testing_20251124:005 only, all 3 runs: → :003 2 / 2 / 1, → `no_walking` 1 / 1 / 2. | 20251124 12/15 [0.548, 0.930] |
+
+**What holds those identities in training:**
+- **α = 0.1:** :004's training runs are only on client_0 (12), and :005's only on client_1
+  (13). client_2, with 75 of 112 runs, holds neither.
+- **α = 0.3:** :005 is only on client_1 (13). :004 is on client_0 (9) and client_2 (3).
+- **The S5 pattern:** S5 likewise failed exactly the two subjects missing from its
+  largest client (005 → 003 and 007 → 004).
+- **New error type:** prediction as `no_walking`. None of S5's Dirichlet FL errors was
+  `no_walking`.
+
+**Local-only errors, non-Dirichlet:**
+- **K=3 ρ = 1.0:** client_0 sends 1 testing_20251124:004 run to :007.
+- **K=3 ρ = 0.375:** client_2 sends 1 testing_20251124:003 run to :008 and 1 :005 run to :007.
+  - The :003 run (`testing_20251124:003:000`) is a 5–5 tied vote, :003 against :008. The
+    tie rule (higher run-mean probability) breaks it to :008, which is also the
+    mean-probability label.
+- **K=3 ρ = 0:** client_2 sends 1 testing_20251124:003 run to :008 and 1 :005 run to `no_walking`.
+- **The two ρ jobs share run counts, not results:**
+  - Both read per client 28 / 28 / 26, by vote and by mean probability.
+  - The models differ. Their second errors differ (:007 vs `no_walking`), and so do
+    client window accuracies: ρ = 0.375 gives 0.977 / 0.974 / 0.941, ρ = 0 gives
+    0.912 / 0.984 / 0.899.
+  - Checked from each job's `setup_audit.json`:
+    - ρ = 0 masks positions {1,2,3} / {4,5,6} / {7,8}, with channels 8 and 10 on client_2;
+    - ρ = 0.375 shares {1,2,3}, with {4,5} / {6,7} / {8} added per client;
+    - both `channel_availability` blocks equal S5's.
+- **S5's ρ = 0 (27, 28, 27)** had different errors: client_0 test_2:003 → 002, and
+  client_2 :005 → 003.
+
+**Local-only Dirichlet, by client.** Run counts are identical on all 3 seeds except
+α = 0.3 client_2 (25 / 24 / 25).
+
+| | Client | Runs correct | Window acc. (per seed) | Where the errors go |
+|---|---|---|---|---|
+| α = 0.1 | client_0 | 10/28 | 0.492 | every Test_2 :002 run → testing_20251124:004 (4601, 4602; 4603: 4 → :004, 1 → test_2:001); every Test_2 :003 run → test_2:001 |
+| | client_1 | 6/28 | 0.270 | every Test_2 run → one 20251124 identity: :003 on 4601, :005 on 4602 and 4603 |
+| | client_2 | 22/28 | 0.818 / 0.814 / 0.808 | the FL errors: :004 → :007, :005 → :003 / `no_walking` |
+| α = 0.3 | client_0 | 10/28 | 0.498 / 0.492 / 0.492 | every Test_2 :002 and :003 run → test_2:001 |
+| | client_1 | 16/28 [0.391, 0.735] | 0.678 / 0.678 / 0.684 | every Test_2 :002 and :003 run → test_2:001; :004 → :003, :007 or :008 |
+| | client_2 | 25 / 24 / 25 | 0.919 / 0.899 / 0.909 | :005 → `no_walking` or :003 |
+
+### The linked identities (`derived/linked_identity_breakdown.csv`)
+
+- **Every centralized and FL model, all seeds and conditions, Dirichlet included,** is
+  correct on both linked identities: test_2:002 5/5 runs and testing_20251124:003 3/3.
+- **No model trained on both sources sends a run of one linked identity to the other.**
+- **Local-only clients without test_2:002 in training,** which are Dirichlet α = 0.1
+  client_0 and client_1, and α = 0.3 client_0 and client_1:
+  - each one labels all 5 test_2:002 runs wrong, on every seed;
+  - all four hold testing_20251124:003 training runs (the same person, other session):
+    7, 4, 5 and 4 runs.
+- **Where those clients send test_2:002:** to :004 (α = 0.1 client_0) or to test_2:001
+  (α = 0.3). The exception is α = 0.1 client_1 at seed 4601, which sends **all 13** Test_2
+  runs to testing_20251124:003, test_2:001 and :003 included.
+- **The same reading as the step-3 re-score:** what the same person's other-session runs
+  get is what every other run from that session gets.
+
+### Gate outcomes
+
+| | Count | Models |
+|---|---|---|
+| **Collapsed** | 1 | local-only Dirichlet α = 0.1 client_2 (spread 0, 1 distinct value) |
+| **Did not train** | 0 | — |
+| **Trained** | all other new regression models | FL Dirichlet α = 0.1 and 0.3; local-only 5 of 6 clients |
+
+- **FLAT:** 1 job, local-only Dirichlet α = 0.1 regression. **No classification run was
+  flagged FLAT.**
+- **Job statuses:** 31 `completed`, 1 `completed_with_failed_clients`.
+- **Per-seed reporting:** no new group needs it. Dirichlet regression has one seed.
+  Dirichlet classification groups are mean ± std over 3 seeds.
+
+### Numbers that moved (S5 → relabel)
+
+| | S5 (8 classes) | Relabel (9 classes) |
+|---|---|---|
+| Centralized classification, window accuracy | 0.9967 / 1.0000 / 0.9967 | 1.0000 / 1.0000 / 0.9967 |
+| FL K=2 IID classification, window accuracy | 0.9967 / 1.0000 / 0.9967 | 1.0000 / 1.0000 / 1.0000 |
+| FL K=2 natural classification, window accuracy | 0.9902 / 0.9772 / 0.9935 (0.9870 ± 0.0086) | 0.9967 on every seed |
+| FL K=3 ρ = 1.0 / 0.375 / 0, window accuracy | 0.9967 / 0.9674 / 0.9772 | 1.0000 / 0.9837 / 0.9707 |
+| Local-only K=3 ρ = 1.0 | 1.000 ± 0.000 | **0.988 ± 0.021** (27, 28, 28) |
+| Local-only K=3 ρ = 0 | 0.976 ± 0.021 (27, 28, 27) | 0.976 ± 0.041 (28, 28, 26) |
+| FL Dirichlet α = 0.1, macro-F1 | 0.641 on every seed | 0.708 / 0.677 / 0.690 |
+| FL Dirichlet α = 0.1, window accuracy | 0.8274 ± 0.0033 | 0.8350 ± 0.0019 |
+| FL Dirichlet α = 0.1, errors | 005 → 003, 007 → 004 | :004 → :007; :005 → :003 / `no_walking` |
+| Local-only Dirichlet α = 0.1, window accuracy | 0.5378 ± 0.0261 | 0.5252 ± 0.0017 |
+| FL Dirichlet α = 0.1 regression | −0.272 [−3.937, +0.258], trained | **+0.079 [−0.106, +0.226]**, trained |
+| Local-only Dirichlet α = 0.1 regression | −2.237 ± 3.767, 0 of 3 failed | **−0.140 ± 0.457, 1 of 3 clients failed** |
+| Local-only natural K=2 classification (re-score) | 0.554 ± 0.126 | 0.500 ± 0.051 |
+| Cross-session control | 0/15 (wrong target) | 14/15 to the same person; negatives 59/60 |
+
+- **Unchanged run counts:**
+  - every centralized and FL non-Dirichlet model, 28/28;
+  - local-only K=2 IID, 1.000;
+  - local-only K=3 ρ = 0.375, 28/28/26;
+  - FL Dirichlet α = 0.1, 22/28;
+  - local-only Dirichlet α = 0.1, clients 10/6/22.
+- **The Dirichlet α = 0.1 counts aren't like-for-like:** the partition changed (21 / 15 / 76
+  → 20 / 17 / 75 runs), so they come from different client data.
+- **New:** every Dirichlet α = 0.3 number.
+- **Not moved:** the 21 kept S5 regression results and the source probe.
+
+### Not done here
+
+- **S6 figures, tables and captions** still show S5 numbers. They need a rebuild from
+  `artifacts/relabel/` plus the kept S5 regression, and the palette needs an 8th identity
+  colour.
+- `docs/review_response_plan.md` and `PRIVACY_NOTES.md` still describe "subject 003" as
+  one person.
+
+---
+
 ## Relabel — classification label = (source, subject) identity, 9 classes (2026-11-08)
 
 Branch `relabel-8class`. This entry covers the code, the configs, the identity-labelled

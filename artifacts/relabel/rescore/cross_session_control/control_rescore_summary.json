@@ -1,0 +1,378 @@
+{
+  "definition": "Cross-session run: a run of an other-source identity linked (configs/identity_links.yaml) to one of the model's classes; hit = predicted as the linked identity. Negative control: every other-source identity with no such link. In-session: the training source's canonical test runs, scored against their own identity.",
+  "train_source": "test_2",
+  "output_mapping": {
+    "subject_001_walking": "test_2:001_walking",
+    "subject_002_walking": "test_2:002_walking",
+    "subject_003_walking": "test_2:003_walking"
+  },
+  "links": [
+    [
+      "test_2:002",
+      "testing_20251124:003"
+    ]
+  ],
+  "cross_session": {
+    "identities": [
+      "testing_20251124:003"
+    ],
+    "targets": [
+      "test_2:002_walking"
+    ],
+    "majority_vote_hits": {
+      "k": 14,
+      "n": 15,
+      "proportion": 0.9333333333333333,
+      "wilson95": [
+        0.7018347012621998,
+        0.9881331045067315
+      ]
+    },
+    "mean_probability_hits": {
+      "k": 14,
+      "n": 15,
+      "proportion": 0.9333333333333333,
+      "wilson95": [
+        0.7018347012621998,
+        0.9881331045067315
+      ]
+    },
+    "num_runs": 15,
+    "num_windows": 142,
+    "window_label_fractions": {
+      "test_2:001_walking": 0.07042253521126761,
+      "test_2:002_walking": 0.9295774647887324
+    },
+    "window_label_counts": {
+      "test_2:001_walking": 10,
+      "test_2:002_walking": 132
+    },
+    "runs_majority_vote": {
+      "test_2:001_walking": 1,
+      "test_2:002_walking": 14
+    },
+    "runs_mean_probability": {
+      "test_2:001_walking": 1,
+      "test_2:002_walking": 14
+    }
+  },
+  "negative_control": {
+    "per_identity": {
+      "testing_20251124:004": {
+        "num_runs": 15,
+        "num_windows": 127,
+        "window_label_fractions": {
+          "test_2:002_walking": 1.0
+        },
+        "window_label_counts": {
+          "test_2:002_walking": 127
+        },
+        "runs_majority_vote": {
+          "test_2:002_walking": 15
+        },
+        "runs_mean_probability": {
+          "test_2:002_walking": 15
+        },
+        "runs_majority_vote_to_cross_session_target": {
+          "test_2:002_walking": {
+            "k": 15,
+            "n": 15,
+            "proportion": 1.0,
+            "wilson95": [
+              0.7961166989641515,
+              1.0
+            ]
+          }
+        },
+        "runs_mean_probability_to_cross_session_target": {
+          "test_2:002_walking": {
+            "k": 15,
+            "n": 15,
+            "proportion": 1.0,
+            "wilson95": [
+              0.7961166989641515,
+              1.0
+            ]
+          }
+        }
+      },
+      "testing_20251124:005": {
+        "num_runs": 16,
+        "num_windows": 134,
+        "window_label_fractions": {
+          "test_2:001_walking": 0.11940298507462686,
+          "test_2:002_walking": 0.8805970149253731
+        },
+        "window_label_counts": {
+          "test_2:001_walking": 16,
+          "test_2:002_walking": 118
+        },
+        "runs_majority_vote": {
+          "test_2:001_walking": 1,
+          "test_2:002_walking": 15
+        },
+        "runs_mean_probability": {
+          "test_2:001_walking": 1,
+          "test_2:002_walking": 15
+        },
+        "runs_majority_vote_to_cross_session_target": {
+          "test_2:002_walking": {
+            "k": 15,
+            "n": 16,
+            "proportion": 0.9375,
+            "wilson95": [
+              0.7167126242970107,
+              0.9888806552353576
+            ]
+          }
+        },
+        "runs_mean_probability_to_cross_session_target": {
+          "test_2:002_walking": {
+            "k": 15,
+            "n": 16,
+            "proportion": 0.9375,
+            "wilson95": [
+              0.7167126242970107,
+              0.9888806552353576
+            ]
+          }
+        }
+      },
+      "testing_20251124:007": {
+        "num_runs": 14,
+        "num_windows": 125,
+        "window_label_fractions": {
+          "test_2:002_walking": 1.0
+        },
+        "window_label_counts": {
+          "test_2:002_walking": 125
+        },
+        "runs_majority_vote": {
+          "test_2:002_walking": 14
+        },
+        "runs_mean_probability": {
+          "test_2:002_walking": 14
+        },
+        "runs_majority_vote_to_cross_session_target": {
+          "test_2:002_walking": {
+            "k": 14,
+            "n": 14,
+            "proportion": 1.0,
+            "wilson95": [
+              0.7846891972623643,
+              1.0
+            ]
+          }
+        },
+        "runs_mean_probability_to_cross_session_target": {
+          "test_2:002_walking": {
+            "k": 14,
+            "n": 14,
+            "proportion": 1.0,
+            "wilson95": [
+              0.7846891972623643,
+              1.0
+            ]
+          }
+        }
+      },
+      "testing_20251124:008": {
+        "num_runs": 15,
+        "num_windows": 142,
+        "window_label_fractions": {
+          "test_2:001_walking": 0.06338028169014084,
+          "test_2:002_walking": 0.9366197183098591
+        },
+        "window_label_counts": {
+          "test_2:001_walking": 9,
+          "test_2:002_walking": 133
+        },
+        "runs_majority_vote": {
+          "test_2:002_walking": 15
+        },
+        "runs_mean_probability": {
+          "test_2:002_walking": 15
+        },
+        "runs_majority_vote_to_cross_session_target": {
+          "test_2:002_walking": {
+            "k": 15,
+            "n": 15,
+            "proportion": 1.0,
+            "wilson95": [
+              0.7961166989641515,
+              1.0
+            ]
+          }
+        },
+        "runs_mean_probability_to_cross_session_target": {
+          "test_2:002_walking": {
+            "k": 15,
+            "n": 15,
+            "proportion": 1.0,
+            "wilson95": [
+              0.7961166989641515,
+              1.0
+            ]
+          }
+        }
+      }
+    },
+    "pooled_runs_majority_vote_to_cross_session_target": {
+      "test_2:002_walking": {
+        "k": 59,
+        "n": 60,
+        "proportion": 0.9833333333333333,
+        "wilson95": [
+          0.9114487027240993,
+          0.9970518402052136
+        ]
+      }
+    },
+    "pooled_runs_mean_probability_to_cross_session_target": {
+      "test_2:002_walking": {
+        "k": 59,
+        "n": 60,
+        "proportion": 0.9833333333333333,
+        "wilson95": [
+          0.9114487027240993,
+          0.9970518402052136
+        ]
+      }
+    }
+  },
+  "in_session": {
+    "majority_vote": {
+      "num_runs": 13,
+      "num_correct": 13,
+      "accuracy": 1.0,
+      "wilson95": [
+        0.7719046276458016,
+        0.9999999999999999
+      ],
+      "macro_f1": 1.0,
+      "per_source": {
+        "test_2": {
+          "num_runs": 13,
+          "num_correct": 13,
+          "accuracy": 1.0,
+          "wilson95": [
+            0.7719046276458016,
+            0.9999999999999999
+          ]
+        }
+      }
+    },
+    "mean_probability": {
+      "num_runs": 13,
+      "num_correct": 13,
+      "accuracy": 1.0,
+      "wilson95": [
+        0.7719046276458016,
+        0.9999999999999999
+      ],
+      "macro_f1": 1.0,
+      "per_source": {
+        "test_2": {
+          "num_runs": 13,
+          "num_correct": 13,
+          "accuracy": 1.0,
+          "wilson95": [
+            0.7719046276458016,
+            0.9999999999999999
+          ]
+        }
+      }
+    },
+    "per_subject_source": [
+      {
+        "source_id": "test_2",
+        "subject_id": "001",
+        "num_runs": 4,
+        "num_windows": 32,
+        "window_accuracy": 1.0,
+        "majority_vote_labels": "{\"test_2:001_walking\": 4}",
+        "mean_probability_labels": "{\"test_2:001_walking\": 4}",
+        "majority_vote_correct": 4,
+        "mean_probability_correct": 4
+      },
+      {
+        "source_id": "test_2",
+        "subject_id": "002",
+        "num_runs": 5,
+        "num_windows": 43,
+        "window_accuracy": 1.0,
+        "majority_vote_labels": "{\"test_2:002_walking\": 5}",
+        "mean_probability_labels": "{\"test_2:002_walking\": 5}",
+        "majority_vote_correct": 5,
+        "mean_probability_correct": 5
+      },
+      {
+        "source_id": "test_2",
+        "subject_id": "003",
+        "num_runs": 4,
+        "num_windows": 28,
+        "window_accuracy": 1.0,
+        "majority_vote_labels": "{\"test_2:003_walking\": 4}",
+        "mean_probability_labels": "{\"test_2:003_walking\": 4}",
+        "majority_vote_correct": 4,
+        "mean_probability_correct": 4
+      }
+    ],
+    "per_identity": {
+      "test_2:001": {
+        "num_runs": 4,
+        "num_windows": 32,
+        "window_label_fractions": {
+          "test_2:001_walking": 1.0
+        },
+        "window_label_counts": {
+          "test_2:001_walking": 32
+        },
+        "runs_majority_vote": {
+          "test_2:001_walking": 4
+        },
+        "runs_mean_probability": {
+          "test_2:001_walking": 4
+        }
+      },
+      "test_2:002": {
+        "num_runs": 5,
+        "num_windows": 43,
+        "window_label_fractions": {
+          "test_2:002_walking": 1.0
+        },
+        "window_label_counts": {
+          "test_2:002_walking": 43
+        },
+        "runs_majority_vote": {
+          "test_2:002_walking": 5
+        },
+        "runs_mean_probability": {
+          "test_2:002_walking": 5
+        }
+      },
+      "test_2:003": {
+        "num_runs": 4,
+        "num_windows": 28,
+        "window_label_fractions": {
+          "test_2:003_walking": 1.0
+        },
+        "window_label_counts": {
+          "test_2:003_walking": 28
+        },
+        "runs_majority_vote": {
+          "test_2:003_walking": 4
+        },
+        "runs_mean_probability": {
+          "test_2:003_walking": 4
+        }
+      }
+    }
+  },
+  "set_membership_matches_s5": true,
+  "s5": {
+    "cross_session_majority_vote": 0,
+    "cross_session_runs": 15,
+    "cross_session_s5_target": "the same subject ID in the training source (now known to be a different person)"
+  }
+}

@@ -1,0 +1,395 @@
+{
+  "scope": "canonical test runs of the other source (saved predictions)",
+  "clients": {
+    "client_0": {
+      "training_sources": [
+        "test_2"
+      ],
+      "linked_labels_in_model": [
+        "test_2:002_walking"
+      ],
+      "identities": {
+        "testing_20251124:003": {
+          "num_runs": 3,
+          "num_windows": 28,
+          "window_label_fractions": {
+            "test_2:002_walking": 1.0
+          },
+          "window_label_counts": {
+            "test_2:002_walking": 28
+          },
+          "runs_majority_vote": {
+            "test_2:002_walking": 3
+          },
+          "runs_mean_probability": {
+            "test_2:002_walking": 3
+          },
+          "relation": "same person as a model class",
+          "targets": [
+            "test_2:002_walking"
+          ],
+          "majority_vote_hits": {
+            "k": 3,
+            "n": 3,
+            "proportion": 1.0,
+            "wilson95": [
+              0.4385029682449546,
+              1.0
+            ]
+          },
+          "mean_probability_hits": {
+            "k": 3,
+            "n": 3,
+            "proportion": 1.0,
+            "wilson95": [
+              0.4385029682449546,
+              1.0
+            ]
+          },
+          "window_hits": {
+            "k": 28,
+            "n": 28,
+            "proportion": 1.0,
+            "wilson95": [
+              0.8793566952341543,
+              0.9999999999999998
+            ]
+          }
+        },
+        "testing_20251124:004": {
+          "num_runs": 3,
+          "num_windows": 25,
+          "window_label_fractions": {
+            "test_2:002_walking": 1.0
+          },
+          "window_label_counts": {
+            "test_2:002_walking": 25
+          },
+          "runs_majority_vote": {
+            "test_2:002_walking": 3
+          },
+          "runs_mean_probability": {
+            "test_2:002_walking": 3
+          },
+          "relation": "different person from every model class",
+          "majority_vote_false_matches": {
+            "k": 3,
+            "n": 3,
+            "proportion": 1.0,
+            "wilson95": [
+              0.4385029682449546,
+              1.0
+            ]
+          },
+          "mean_probability_false_matches": {
+            "k": 3,
+            "n": 3,
+            "proportion": 1.0,
+            "wilson95": [
+              0.4385029682449546,
+              1.0
+            ]
+          },
+          "window_false_matches": {
+            "k": 25,
+            "n": 25,
+            "proportion": 1.0,
+            "wilson95": [
+              0.8668077490609515,
+              0.9999999999999999
+            ]
+          }
+        },
+        "testing_20251124:005": {
+          "num_runs": 3,
+          "num_windows": 25,
+          "window_label_fractions": {
+            "test_2:002_walking": 1.0
+          },
+          "window_label_counts": {
+            "test_2:002_walking": 25
+          },
+          "runs_majority_vote": {
+            "test_2:002_walking": 3
+          },
+          "runs_mean_probability": {
+            "test_2:002_walking": 3
+          },
+          "relation": "different person from every model class",
+          "majority_vote_false_matches": {
+            "k": 3,
+            "n": 3,
+            "proportion": 1.0,
+            "wilson95": [
+              0.4385029682449546,
+              1.0
+            ]
+          },
+          "mean_probability_false_matches": {
+            "k": 3,
+            "n": 3,
+            "proportion": 1.0,
+            "wilson95": [
+              0.4385029682449546,
+              1.0
+            ]
+          },
+          "window_false_matches": {
+            "k": 25,
+            "n": 25,
+            "proportion": 1.0,
+            "wilson95": [
+              0.8668077490609515,
+              0.9999999999999999
+            ]
+          }
+        },
+        "testing_20251124:007": {
+          "num_runs": 3,
+          "num_windows": 27,
+          "window_label_fractions": {
+            "test_2:002_walking": 1.0
+          },
+          "window_label_counts": {
+            "test_2:002_walking": 27
+          },
+          "runs_majority_vote": {
+            "test_2:002_walking": 3
+          },
+          "runs_mean_probability": {
+            "test_2:002_walking": 3
+          },
+          "relation": "different person from every model class",
+          "majority_vote_false_matches": {
+            "k": 3,
+            "n": 3,
+            "proportion": 1.0,
+            "wilson95": [
+              0.4385029682449546,
+              1.0
+            ]
+          },
+          "mean_probability_false_matches": {
+            "k": 3,
+            "n": 3,
+            "proportion": 1.0,
+            "wilson95": [
+              0.4385029682449546,
+              1.0
+            ]
+          },
+          "window_false_matches": {
+            "k": 27,
+            "n": 27,
+            "proportion": 1.0,
+            "wilson95": [
+              0.8754449702581328,
+              0.9999999999999998
+            ]
+          }
+        },
+        "testing_20251124:008": {
+          "num_runs": 3,
+          "num_windows": 30,
+          "window_label_fractions": {
+            "test_2:001_walking": 0.06666666666666667,
+            "test_2:002_walking": 0.9333333333333333
+          },
+          "window_label_counts": {
+            "test_2:001_walking": 2,
+            "test_2:002_walking": 28
+          },
+          "runs_majority_vote": {
+            "test_2:002_walking": 3
+          },
+          "runs_mean_probability": {
+            "test_2:002_walking": 3
+          },
+          "relation": "different person from every model class",
+          "majority_vote_false_matches": {
+            "k": 3,
+            "n": 3,
+            "proportion": 1.0,
+            "wilson95": [
+              0.4385029682449546,
+              1.0
+            ]
+          },
+          "mean_probability_false_matches": {
+            "k": 3,
+            "n": 3,
+            "proportion": 1.0,
+            "wilson95": [
+              0.4385029682449546,
+              1.0
+            ]
+          },
+          "window_false_matches": {
+            "k": 28,
+            "n": 30,
+            "proportion": 0.9333333333333333,
+            "wilson95": [
+              0.7867654163738308,
+              0.9815229762087295
+            ]
+          }
+        }
+      }
+    },
+    "client_1": {
+      "training_sources": [
+        "testing_20251124"
+      ],
+      "linked_labels_in_model": [
+        "testing_20251124:003_walking"
+      ],
+      "identities": {
+        "test_2:001": {
+          "num_runs": 4,
+          "num_windows": 32,
+          "window_label_fractions": {
+            "testing_20251124:008_walking": 1.0
+          },
+          "window_label_counts": {
+            "testing_20251124:008_walking": 32
+          },
+          "runs_majority_vote": {
+            "testing_20251124:008_walking": 4
+          },
+          "runs_mean_probability": {
+            "testing_20251124:008_walking": 4
+          },
+          "relation": "different person from every model class",
+          "majority_vote_false_matches": {
+            "k": 0,
+            "n": 4,
+            "proportion": 0.0,
+            "wilson95": [
+              0.0,
+              0.4898908364545973
+            ]
+          },
+          "mean_probability_false_matches": {
+            "k": 0,
+            "n": 4,
+            "proportion": 0.0,
+            "wilson95": [
+              0.0,
+              0.4898908364545973
+            ]
+          },
+          "window_false_matches": {
+            "k": 0,
+            "n": 32,
+            "proportion": 0.0,
+            "wilson95": [
+              0.0,
+              0.1071791982550706
+            ]
+          }
+        },
+        "test_2:002": {
+          "num_runs": 5,
+          "num_windows": 43,
+          "window_label_fractions": {
+            "testing_20251124:003_walking": 0.023255813953488372,
+            "testing_20251124:004_walking": 0.27906976744186046,
+            "testing_20251124:007_walking": 0.6976744186046512
+          },
+          "window_label_counts": {
+            "testing_20251124:003_walking": 1,
+            "testing_20251124:004_walking": 12,
+            "testing_20251124:007_walking": 30
+          },
+          "runs_majority_vote": {
+            "testing_20251124:004_walking": 1,
+            "testing_20251124:007_walking": 4
+          },
+          "runs_mean_probability": {
+            "testing_20251124:004_walking": 1,
+            "testing_20251124:007_walking": 4
+          },
+          "relation": "same person as a model class",
+          "targets": [
+            "testing_20251124:003_walking"
+          ],
+          "majority_vote_hits": {
+            "k": 0,
+            "n": 5,
+            "proportion": 0.0,
+            "wilson95": [
+              0.0,
+              0.43448246478317476
+            ]
+          },
+          "mean_probability_hits": {
+            "k": 0,
+            "n": 5,
+            "proportion": 0.0,
+            "wilson95": [
+              0.0,
+              0.43448246478317476
+            ]
+          },
+          "window_hits": {
+            "k": 1,
+            "n": 43,
+            "proportion": 0.023255813953488372,
+            "wilson95": [
+              0.004117087274333769,
+              0.12058993440607177
+            ]
+          }
+        },
+        "test_2:003": {
+          "num_runs": 4,
+          "num_windows": 28,
+          "window_label_fractions": {
+            "testing_20251124:003_walking": 0.5714285714285714,
+            "testing_20251124:004_walking": 0.42857142857142855
+          },
+          "window_label_counts": {
+            "testing_20251124:003_walking": 16,
+            "testing_20251124:004_walking": 12
+          },
+          "runs_majority_vote": {
+            "testing_20251124:003_walking": 3,
+            "testing_20251124:004_walking": 1
+          },
+          "runs_mean_probability": {
+            "testing_20251124:003_walking": 2,
+            "testing_20251124:004_walking": 2
+          },
+          "relation": "different person from every model class",
+          "majority_vote_false_matches": {
+            "k": 3,
+            "n": 4,
+            "proportion": 0.75,
+            "wilson95": [
+              0.30064184258240184,
+              0.9544127391902995
+            ]
+          },
+          "mean_probability_false_matches": {
+            "k": 2,
+            "n": 4,
+            "proportion": 0.5,
+            "wilson95": [
+              0.15003898915214947,
+              0.8499610108478506
+            ]
+          },
+          "window_false_matches": {
+            "k": 16,
+            "n": 28,
+            "proportion": 0.5714285714285714,
+            "wilson95": [
+              0.3907078562746876,
+              0.734914528758763
+            ]
+          }
+        }
+      }
+    }
+  }
+}

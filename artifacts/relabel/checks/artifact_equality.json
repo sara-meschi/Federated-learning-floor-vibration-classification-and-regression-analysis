@@ -1,0 +1,129 @@
+{
+  "bitwise_equal": [
+    "samples",
+    "train_indices",
+    "test_indices",
+    "channel_mean",
+    "channel_std",
+    "run_manifest",
+    "metadata (every field except activity)"
+  ],
+  "num_windows": 1549,
+  "num_train_windows": 1242,
+  "num_test_windows": 307,
+  "canonical_classes": [
+    "no_walking",
+    "subject_001_walking",
+    "subject_002_walking",
+    "subject_003_walking",
+    "subject_004_walking",
+    "subject_005_walking",
+    "subject_007_walking",
+    "subject_008_walking"
+  ],
+  "relabelled_classes": [
+    "no_walking",
+    "test_2:001_walking",
+    "test_2:002_walking",
+    "test_2:003_walking",
+    "testing_20251124:003_walking",
+    "testing_20251124:004_walking",
+    "testing_20251124:005_walking",
+    "testing_20251124:007_walking",
+    "testing_20251124:008_walking"
+  ],
+  "window_count_by_old_and_new_class": [
+    {
+      "canonical_class": "no_walking",
+      "relabelled_class": "no_walking",
+      "windows": 345
+    },
+    {
+      "canonical_class": "subject_001_walking",
+      "relabelled_class": "test_2:001_walking",
+      "windows": 188
+    },
+    {
+      "canonical_class": "subject_002_walking",
+      "relabelled_class": "test_2:002_walking",
+      "windows": 194
+    },
+    {
+      "canonical_class": "subject_003_walking",
+      "relabelled_class": "test_2:003_walking",
+      "windows": 152
+    },
+    {
+      "canonical_class": "subject_003_walking",
+      "relabelled_class": "testing_20251124:003_walking",
+      "windows": 142
+    },
+    {
+      "canonical_class": "subject_004_walking",
+      "relabelled_class": "testing_20251124:004_walking",
+      "windows": 127
+    },
+    {
+      "canonical_class": "subject_005_walking",
+      "relabelled_class": "testing_20251124:005_walking",
+      "windows": 134
+    },
+    {
+      "canonical_class": "subject_007_walking",
+      "relabelled_class": "testing_20251124:007_walking",
+      "windows": 125
+    },
+    {
+      "canonical_class": "subject_008_walking",
+      "relabelled_class": "testing_20251124:008_walking",
+      "windows": 142
+    }
+  ],
+  "canonical_classes_split_by_relabel": {
+    "subject_003_walking": [
+      "test_2:003_walking",
+      "testing_20251124:003_walking"
+    ]
+  },
+  "summary_keys_that_differ": [
+    "class_names",
+    "class_window_counts",
+    "identities",
+    "label_scheme"
+  ],
+  "identity_walking_windows_by_split": {
+    "test_2:001": {
+      "train": 156,
+      "test": 32
+    },
+    "test_2:002": {
+      "train": 151,
+      "test": 43
+    },
+    "test_2:003": {
+      "train": 124,
+      "test": 28
+    },
+    "testing_20251124:003": {
+      "test": 28,
+      "train": 114
+    },
+    "testing_20251124:004": {
+      "train": 102,
+      "test": 25
+    },
+    "testing_20251124:005": {
+      "train": 109,
+      "test": 25
+    },
+    "testing_20251124:007": {
+      "train": 98,
+      "test": 27
+    },
+    "testing_20251124:008": {
+      "train": 112,
+      "test": 30
+    }
+  },
+  "passed": true
+}
