@@ -4,6 +4,111 @@ What changed, and every number that moved as a result. Newest first.
 
 ---
 
+## Excel figure workbooks (2026-11-13)
+
+Branch `excel-figures`, cut from `main` after the relabel merge (`460056d`). The PI asked
+for every figure as its own .xlsx with native, editable Excel charts. Nothing trains and
+nothing is written under `artifacts/`.
+
+### What was added
+
+- `src/redo_by_sara/excel_figures.py`: the loader and one builder per workbook.
+- `scripts/make_excel_figures.py`: writes `excel/` and refuses an output folder inside
+  `artifacts/`.
+- `test_excel_figures.py`: 12 tests.
+- `excel/`: 8 workbooks:
+  - `fig1_convergence`
+  - `fig2_classification_comparison`
+  - `fig2_regression_skill` (two charts: full range, then zoomed to −1.5…1)
+  - `fig2_regression_rmse`
+  - `fig3_sensor_axis`
+  - `fig4_partitions` (the counts as tables with a colour scale, plus stacked columns)
+  - `fig5_run_scatter`
+  - `tables` (T1–T4, T5 source probe only, RMSE)
+- `requirements.txt` gains `openpyxl` (3.1.5 in `fl`).
+
+### How the numbers are read
+
+- **Loader:** `RelabelResults` subclasses `paper_figures.Results`, and the S6 record
+  functions run unchanged on it. It reads:
+  - the relabel index;
+  - the S5 jobs that `s5_disposition.csv` marks `kept`;
+  - the re-scored local-only natural K=2 classification, from
+    `relabel/rescore/local_only_k2_natural/`.
+- **Disposition check:** every disposition row is accounted for. `subject003_control`
+  is the only S5 job deliberately not read.
+- **Never read:**
+  - the cross-session control, its re-scores and the reverse-direction runs;
+  - the per-identity breakdown across campaigns and `configs/identity_links.yaml`;
+  - the secondary fields that key on subject ID alone.
+- **Fig 1 majority-class rate:** read from the identity-labelled artifact. The value is
+  unchanged at 276/1242 = 0.222.
+- **Fig 5 grouping:** points are grouped by (source, subject) identity, not by subject ID,
+  so it does **not** reuse the S6 scatter's subject-only grouping.
+- **`paper_figures.py`:** untouched.
+
+### Numbers
+
+- **Nothing moved.**
+  - Every classification count and Wilson interval equals
+    `relabel/derived/run_level_classification.csv` (local-only natural K=2: the re-score).
+  - Every skill and bootstrap interval equals the index.
+  - Every RMSE is recomputed from the saved run predictions (local-only: each client's own
+    file) and checked against the recorded value to 1e-9, as are lookup RMSE, skill and
+    skill CI.
+- **New, derived here: RMSE 95% intervals.** The percentile interval of RMSE over the same
+  10,000 run resamples (generator seed 4601, the same draws) as the saved skill intervals.
+  The build re-derives every saved skill interval from those draws and asserts equality.
+  Values in m/s; the lookup is 0.0405 everywhere:
+
+| Model | RMSE [95% CI] |
+|---|---|
+| Centralized residual, seeds 4601 / 4602 / 4603 | 0.0380 [0.0189, 0.0578] / 0.0388 [0.0181, 0.0600] / 0.0386 [0.0184, 0.0597] |
+| FL K=2 IID, seeds 4601 / 4602 / 4603 | 0.0387 [0.0237, 0.0527] / 0.0374 [0.0268, 0.0475] / 0.0344 [0.0196, 0.0478] |
+| Local-only K=2 IID, client_0 / client_1 | 0.0348 [0.0199, 0.0513] / 0.0452 [0.0215, 0.0687] |
+| FL K=2 natural, seeds 4601 / 4602 / 4603 (collapsed) | 0.0445 [0.0228, 0.0635] / 0.0429 [0.0265, 0.0589] / 0.0405 [0.0189, 0.0628] |
+| Local-only K=2 natural, client_0 / client_1 | 0.0427 [0.0210, 0.0646] / 0.0620 [0.0485, 0.0746] |
+| FL K=3 ρ = 1.0 / 0.375 (did not train) / 0 (collapsed) | 0.0384 [0.0215, 0.0532] / 0.0396 [0.0186, 0.0611] / 0.0405 [0.0189, 0.0628] |
+| Local-only K=3 ρ = 1.0, clients 0 / 1 / 2 | 0.0363 [0.0234, 0.0482] / 0.0423 [0.0206, 0.0639] / 0.0494 [0.0235, 0.0721] |
+| Local-only K=3 ρ = 0.375, clients 0 / 1 / 2 | 0.0535 [0.0266, 0.0807] / 0.0399 [0.0232, 0.0577] / 0.0458 [0.0263, 0.0637] |
+| Local-only K=3 ρ = 0, clients 0 (did not train) / 1 / 2 | 0.0408 [0.0194, 0.0630] / 0.0436 [0.0253, 0.0618] / 0.0403 [0.0212, 0.0598] |
+| FL Dirichlet α = 0.3 / α = 0.1 | 0.0451 [0.0294, 0.0599] / 0.0389 [0.0175, 0.0603] |
+| Local-only Dirichlet α = 0.3, clients 0 / 1 / 2 | 0.0473 [0.0269, 0.0687] / 0.0418 [0.0230, 0.0617] / 0.0454 [0.0292, 0.0592] |
+| Local-only Dirichlet α = 0.1, clients 0 / 1 / 2 (collapsed) | 0.0490 [0.0340, 0.0641] / 0.0366 [0.0181, 0.0559] / 0.0405 [0.0189, 0.0627] |
+
+### Where Excel differs from the matplotlib figures
+
+- **Fig 2:** one category slot per point (condition, then model), because Excel cannot
+  jitter. Per-point marker styles and outcome data labels are fixed at build time, and
+  each notes sheet says how to restyle a point.
+- **Fig 2 skill axis:** the full-range chart spans every interval, down to about −11 for
+  local-only natural K=2 client_1 (CI −10.652). The zoomed chart cuts intervals at the
+  plot edge instead of drawing the paper's arrowheads.
+- **Panel annotations** are chart titles, since openpyxl has no text boxes.
+- **Fig 4:** Excel has no heatmap chart.
+
+### Verification
+
+- **Formulas:** LibreOffice is not installed. Instead, all 1,053 formula cells were
+  evaluated with pycel (in a throwaway venv, not a dependency): **0 errors**.
+  - Fig 3's local-only mean ± std formulas give T4's values (classification ρ = 1.0 /
+    0.375 / 0: 0.988 ± 0.021, 0.976 ± 0.041, 0.976 ± 0.041; regression over trained
+    clients: −0.125 ± 0.343, −0.329 ± 0.389, −0.073 ± 0.122 over 2).
+  - Fig 4's SUMIFS tables equal the relabel entry's client × identity counts cell for cell.
+- **`test_excel_figures.py`:**
+  - every workbook opens, has ≥ 1 chart (`tables.xlsx` is the stated exception), uses
+    Arial throughout, and has `fullCalcOnLoad` and the notes lines;
+  - chart references point into the workbook;
+  - error-bar columns are the stated formulas;
+  - the data values equal the T4 and regression-detail literals of the relabel results
+    entry;
+  - no XML part of any workbook contains "linked" or a personal name. The names are read
+    at test time from the local `testNotes.xlsx` subject table, and a failure reports only
+    the workbook and XML part.
+- **Not checked here:** rendering in Excel itself.
+
+---
+
 ## Relabel — Results (2026-11-10)
 
 The relabel queue finished: **32 of 32 jobs terminal, none crashed.** Every job ran on

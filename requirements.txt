@@ -3,6 +3,7 @@ scipy
 PyYAML
 torch
 matplotlib
+openpyxl
 h5py
 wandb
 flwr[simulation]
