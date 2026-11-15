@@ -4,6 +4,40 @@ What changed, and every number that moved as a result. Newest first.
 
 ---
 
+## Excel confusion matrices (2026-11-14)
+
+New workbook `excel/confusion_matrices.xlsx`, built by `build_confusion` in
+`src/redo_by_sara/excel_figures.py` with the other workbooks. It covers all 49 classification
+models in Fig 2 (centralized, FL and local-only clients, every seed), in two units:
+
+- **Per run** (8 × 9): the 28 held-out test runs, true identity × majority-vote class, read
+  from each model's `run_level_predictions.csv`. A run's vote can be `no_walking`. All 49
+  models.
+- **Per window** (9 × 9): the 307 test windows, read from each model's saved
+  `test_confusion_matrix.csv`. 47 models. The two re-scored local-only natural K=2 clients
+  have no per-window matrix: their saved one uses the pre-relabel class list, and their
+  re-score is per run only.
+
+Sheets: `data` (tidy counts), `chart` (per-identity run recall per condition, clustered
+columns, Wilson 95% intervals), `recall`, `run_matrices` and `window_matrices` (one block per
+model, SUMIFS formulas into `data`, row totals, recall, colour scale), `notes`.
+
+Checks at build time: every per-run diagonal equals the model's correct runs in Fig 2 / T4.
+Every per-window matrix has the same 9-class order. Its identity rows equal the window counts
+in the run-level predictions, and its diagonal reproduces the saved window accuracy. pycel
+evaluated all 815 matrix rows, totals and recall included, against `data`: 0 mismatches.
+
+Also fixed `git_commit()`: untracked files (the `excel/` output itself) no longer mark the
+build as "with uncommitted changes".
+
+**Nothing moved.** The counts come from saved predictions. The new numbers are the
+per-identity recalls and their Wilson intervals, with 3 to 5 test runs per identity.
+
+`test_excel_figures.py`: 13 tests (was 12). `confusion_matrices.xlsx` joins every per-workbook
+check, and a new test checks the per-run diagonals against T4 literals.
+
+---
+
 ## Excel figure workbooks (2026-11-13)
 
 Branch `excel-figures`, cut from `main` after the relabel merge (`460056d`). The PI asked

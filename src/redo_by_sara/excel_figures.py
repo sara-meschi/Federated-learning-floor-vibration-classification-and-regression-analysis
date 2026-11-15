@@ -1381,6 +1381,259 @@ def build_fig5(build: Build) -> Workbook:
 
 
 # --------------------------------------------------------------------------------------
+# confusion matrices
+# --------------------------------------------------------------------------------------
+
+BACKGROUND = "no_walking"
+UNIT_LABELS = {"run": "per run (majority vote)", "window": "per window"}
+
+
+def _class_label(label: str) -> str:
+    """Display label of a saved class name: ``test_2:002_walking`` → ``test_2:002``."""
+    if label == BACKGROUND:
+        return label
+    if not label.endswith("_walking"):
+        raise AssertionError(f"unexpected class name {label!r}")
+    return label.removesuffix("_walking")
+
+
+def _model_key(point: Mapping[str, Any]) -> str:
+    parts = [point["family"]] if point["family"] == "centralized" else [point["family"], point["condition"]]
+    return "/".join(parts + [f"seed{point['seed']}"] + ([point["client"]] if point["client"] else []))
+
+
+def _confusion_files(results: RelabelResults, point: Mapping[str, Any]) -> tuple[Path, Path, Path | None]:
+    """(run-level predictions, run-level metrics, window confusion matrix) of one model.
+    The re-scored local-only natural clients have no 9-class window matrix: their saved one
+    predates the relabel, so it is not read."""
+    condition = None if point["family"] == "centralized" else point["condition"]
+    rows = [r for r in results.rows(point["family"], condition, "classification") if int(r["seed"]) == point["seed"]]
+    if len(rows) != 1:
+        raise AssertionError(f"{_model_key(point)}: expected one index row, got {len(rows)}")
+    if rows[0]["job_id"] == RESCORED_LOCAL_NATURAL:
+        folder = results.root / "relabel" / "rescore" / "local_only_k2_natural" / point["client"]
+        return folder / "run_level_predictions.csv", folder / "run_level_metrics.json", None
+    folder = results.result_dir(rows[0]) / point["client"]
+    return (folder / "run_level" / "run_level_predictions.csv", folder / "run_level" / "run_level_metrics.json",
+            folder / "test_confusion_matrix.csv")
+
+
+def confusion_models(results: RelabelResults, points: Sequence[Mapping[str, Any]]) -> tuple[list[str], list[dict[str, Any]]]:
+    """The class order and, per classification model (Fig 2 order), its run-level and
+    window-level confusion counts, each checked against the saved record."""
+    classes: list[str] | None = None
+    models = []
+    for point in points:
+        runs_file, metrics_file, window_file = _confusion_files(results, point)
+        key = _model_key(point)
+        runs = pf._read_csv(runs_file)
+        run_counts: dict[tuple[str, str], int] = {}
+        walking: dict[tuple[str, str], int] = {}
+        for r in runs:
+            true, vote = _class_label(r["true_label"]), _class_label(r["majority_vote_label"])
+            if true == BACKGROUND or (r["majority_vote_correct"] == "True") != (true == vote):
+                raise AssertionError(f"{key}: inconsistent run row {r['run_uid']}")
+            run_counts[true, vote] = run_counts.get((true, vote), 0) + 1
+            for label, n in json.loads(r["window_label_counts"]).items():
+                walking[true, _class_label(label)] = walking.get((true, _class_label(label)), 0) + n
+        if len(runs) != point["runs"] or sum(n for (t, p), n in run_counts.items() if t == p) != point["correct"]:
+            raise AssertionError(f"{key}: run-level matrix does not reproduce {point['correct']}/{point['runs']}")
+
+        window_counts = None
+        if window_file is not None:
+            table = pf._read_csv(window_file)
+            header = [_class_label(c) for c in table[0] if c != "true\\predicted"]
+            classes = classes or header
+            if header != classes or [_class_label(r["true\\predicted"]) for r in table] != classes:
+                raise AssertionError(f"{key}: window matrix classes differ from {classes}")
+            window_counts = {(_class_label(r["true\\predicted"]), _class_label(c)): int(n)
+                             for r in table for c, n in r.items() if c != "true\\predicted"}
+            for (true, predicted), n in window_counts.items():
+                if true != BACKGROUND and walking.get((true, predicted), 0) != n:
+                    raise AssertionError(f"{key}: window matrix disagrees with the run-level window counts")
+            accuracy = pf._read_json(metrics_file)["window_accuracy_all_test_windows"]
+            diagonal = sum(n for (t, p), n in window_counts.items() if t == p)
+            if not math.isclose(diagonal / sum(window_counts.values()), accuracy, abs_tol=1e-12):
+                raise AssertionError(f"{key}: window matrix does not reproduce window accuracy {accuracy}")
+        models.append({**point, "model_key": key, "run_counts": run_counts, "window_counts": window_counts,
+                       "run_source": results.relative(runs_file),
+                       "window_source": results.relative(window_file) if window_file else None})
+    if classes is None:
+        raise AssertionError("no window confusion matrix found")
+    stray = {c for m in models for pair in m["run_counts"] for c in pair} - set(classes)
+    if stray:
+        raise AssertionError(f"run-level labels outside the class list: {sorted(stray)}")
+    return classes, models
+
+
+def _tint(color: str, amount: float) -> str:
+    """``color`` mixed with white (amount 0 = the colour, 1 = white)."""
+    channels = (int(color[i:i + 2], 16) for i in (0, 2, 4))
+    return "".join(f"{round(c + (255 - c) * amount):02X}" for c in channels)
+
+
+def _matrix_sheet(ws: Worksheet, data: Table, models: Sequence[Mapping[str, Any]], unit: str,
+                  classes: Sequence[str]) -> None:
+    """One block per model: SUMIFS formulas into ``data``, row totals, recall, a colour scale."""
+    true_classes = [c for c in classes if unit == "window" or c != BACKGROUND]
+    rng = {k: data.ref(k) for k in ("unit", "model_key", "true_class", "predicted_class", "count")}
+    ws.column_dimensions["A"].width = 30
+    for j in range(len(classes) + 2):
+        ws.column_dimensions[get_column_letter(2 + j)].width = 20
+    last = get_column_letter(1 + len(classes))
+    total_col = get_column_letter(2 + len(classes))
+    top = 1
+    for m in models:
+        if m[f"{unit}_counts"] is None:
+            continue
+        ws.cell(row=top, column=1, value=f"{m['condition_label']} · {m['model']}").font = _font(bold=True)
+        ws.cell(row=top + 1, column=1, value="model_key").font = _font(italic=True, size=9)
+        ws.cell(row=top + 1, column=2, value=m["model_key"]).font = _font(italic=True, size=9)
+        header = top + 2
+        ws.cell(row=header, column=1, value="true \\ predicted").font = _font(bold=True)
+        for j, c in enumerate([*classes, "total", "recall"]):
+            ws.cell(row=header, column=2 + j, value=c).font = _font(bold=True, size=9)
+        for i, true in enumerate(true_classes):
+            r = header + 1 + i
+            ws.cell(row=r, column=1, value=true).font = _font()
+            for j in range(len(classes)):
+                col = get_column_letter(2 + j)
+                formula = (f'=SUMIFS({rng["count"]},{rng["unit"]},"{unit}",{rng["model_key"]},$B${top + 1},'
+                           f'{rng["true_class"]},$A{r},{rng["predicted_class"]},{col}${header})')
+                ws.cell(row=r, column=2 + j, value=formula).font = _font()
+            ws.cell(row=r, column=2 + len(classes), value=f"=SUM(B{r}:{last}{r})").font = _font(bold=True)
+            diagonal = f"{get_column_letter(2 + classes.index(true))}{r}"
+            cell = ws.cell(row=r, column=3 + len(classes), value=f"={diagonal}/{total_col}{r}")
+            cell.font = _font()
+            cell.number_format = "0.000"
+        bottom = header + len(true_classes)
+        ws.cell(row=bottom + 1, column=1, value="total").font = _font(bold=True)
+        for j in range(len(classes) + 1):
+            col = get_column_letter(2 + j)
+            ws.cell(row=bottom + 1, column=2 + j, value=f"=SUM({col}{header + 1}:{col}{bottom})").font = _font(bold=True)
+        ws.conditional_formatting.add(
+            f"B{header + 1}:{last}{bottom}",
+            ColorScaleRule(start_type="num", start_value=0, start_color="FFFFFF",
+                           end_type="max", end_color="2166AC"))
+        top = bottom + 4
+
+
+def build_confusion(build: Build) -> Workbook:
+    results = build.results
+    points = _with_axis_groups(build.classification)
+    classes, models = confusion_models(results, points)
+    identities = [c for c in classes if c != BACKGROUND]
+    wb = _new_workbook()
+
+    rows = []
+    for unit in ("run", "window"):
+        for m in models:
+            counts = m[f"{unit}_counts"]
+            if counts is None:
+                continue
+            for true in (classes if unit == "window" else identities):
+                for predicted in classes:
+                    rows.append({"unit": unit, "model_key": m["model_key"], "condition": m["condition"],
+                                 "condition_label": m["condition_label"], "family": m["family"],
+                                 "seed": m["seed"], "client": m["client"], "model": m["model"],
+                                 "true_class": true, "predicted_class": predicted,
+                                 "count": counts.get((true, predicted), 0),
+                                 "source_file": m[f"{unit}_source"]})
+    data = write_table(wb["data"], rows, ["unit", "model_key", "condition", "condition_label", "family", "seed",
+                                          "client", "model", "true_class", "predicted_class", "count",
+                                          "source_file"])
+
+    recall_rows = []
+    for m in models:
+        for identity in identities:
+            runs = sum(n for (t, _), n in m["run_counts"].items() if t == identity)
+            correct = m["run_counts"].get((identity, identity), 0)
+            low, high = pf.wilson_interval(correct, runs)
+            recall_rows.append({"model_key": m["model_key"], "condition": m["condition"],
+                                "condition_label": m["condition_label"], "family": m["family"],
+                                "seed": m["seed"], "client": m["client"], "model": m["model"],
+                                "identity": identity, "correct": correct, "runs": runs,
+                                "value": correct / runs, "ci_lower": low, "ci_upper": high,
+                                "source_file": m["run_source"]})
+
+    charts = _sheet(wb, "chart")
+    recall_ws = _sheet(wb, "recall")
+    recall = write_table(recall_ws, recall_rows, ["model_key", "condition", "condition_label", "family", "seed",
+                                                  "client", "model", "identity", "correct", "runs", "value",
+                                                  "ci_lower", "ci_upper", "source_file"])
+    recall_ws.freeze_panes = "A2"
+    for k, condition in enumerate(dict.fromkeys(m["condition"] for m in models)):
+        group = [m for m in models if m["condition"] == condition]
+        chart = BarChart()
+        chart.type = "col"
+        chart.grouping = "clustered"
+        chart.gapWidth = 80
+        chart.title = _title(f"Per-identity run recall: {group[0]['condition_label']}")
+        by_family: dict[str, list[Mapping[str, Any]]] = {}
+        for m in group:
+            by_family.setdefault(m["family"], []).append(m)
+        for family, members in by_family.items():
+            base = FAMILY_MARKER[family][1]
+            for i, m in enumerate(members):
+                start, stop = recall.rows_where(recall_rows, model_key=m["model_key"])
+                s = _series(recall.ref("value", start, stop), title=m["model"])
+                s.cat = AxDataSource(strRef=StrRef(f=recall.ref("identity", start, stop)))
+                s.graphicalProperties = GraphicalProperties(
+                    solidFill=_tint(base, 0.65 * i / max(1, len(members) - 1)) if len(members) > 1 else base,
+                    ln=LineProperties(solidFill="FFFFFF", w=3175))
+                s.errBars = _custom_error_bars(recall, start, stop)
+                chart.series.append(s)
+        _style_axis(chart.x_axis, "True identity", gridlines=False)
+        _style_axis(chart.y_axis, "Run recall (majority vote), Wilson 95% CI", minimum=0, maximum=1,
+                    number_format="0.0", major_unit=0.2)
+        _place_axes(chart)
+        _legend(chart, position="r")
+        _size(chart, 22, 9)
+        charts.add_chart(chart, f"A{1 + 20 * k}")
+
+    _matrix_sheet(_sheet(wb, "run_matrices"), data, models, "run", classes)
+    _matrix_sheet(_sheet(wb, "window_matrices"), data, models, "window", classes)
+
+    missing = [m["model_key"] for m in models if m["window_counts"] is None]
+    write_notes(
+        wb, build, "Confusion matrices: every classification model",
+        f"Test-set confusion matrices of all {len(models)} classification models in Fig 2 "
+        "(centralized, FL and local-only clients, every seed), in two units. run_matrices: the "
+        "28 held-out test runs, true identity × majority-vote class (8 × 9; a run's vote can be "
+        f"no_walking). window_matrices: the {sum(models[0]['window_counts'].values())} test "
+        "windows, true × predicted class (9 × 9). Every matrix cell is a SUMIFS formula over the "
+        "data sheet, with row totals, recall = diagonal / row total and a white→blue colour "
+        "scale per block. The chart sheet plots per-identity run recall per condition, from the "
+        "recall sheet, with Wilson 95% intervals (3 to 5 test runs per identity, so wide).",
+        _columns_doc(data.columns, {
+            "unit": "run (majority vote per test run) or window (each test window).",
+            "model_key": "Model identifier: family / condition / seed / client. The matrix blocks "
+                         "select their cells by it.",
+            "true_class": "True class: a (source, subject) identity as source:subject, or no_walking "
+                          "(window unit only; no test run is a no_walking run).",
+            "predicted_class": "Predicted class (the run's majority vote for the run unit).",
+            "count": "Test runs (run unit) or test windows (window unit) with that true and predicted class.",
+            "source_file": "The model's saved run-level predictions (run unit) or saved window "
+                           "confusion matrix (window unit).",
+            "recall sheet": "One row per model and identity: correct = runs voted as that identity, "
+                            "runs = its test runs, value = correct / runs with a Wilson 95% interval."}),
+        [m["run_source"] for m in models] + [m["window_source"] for m in models if m["window_source"]],
+        extra=[
+            "Run unit: majority vote over a run's windows whose true class is the identity (background "
+            "windows excluded), ties to the higher run-mean probability, then the lower class index. "
+            "The diagonal of every run matrix reproduces the model's correct runs in Fig 2 / T4.",
+            "Window unit: the confusion matrix saved with each model. Its identity rows are checked "
+            "equal to the window counts in the run-level predictions, and its diagonal reproduces the "
+            "saved window accuracy.",
+            "No window matrix for " + ", ".join(missing) + ": these clients were re-scored at run "
+            "level only after the relabel, and their saved window matrix uses the earlier class "
+            "list, so it is not used.",
+        ],
+        metrics=("run accuracy", "Wilson 95% interval"))
+    return wb
+
+
+# --------------------------------------------------------------------------------------
 # tables
 # --------------------------------------------------------------------------------------
 
@@ -1556,6 +1809,7 @@ WORKBOOKS: dict[str, Callable[[Build], Workbook]] = {
     "fig3_sensor_axis.xlsx": build_fig3,
     "fig4_partitions.xlsx": build_fig4,
     "fig5_run_scatter.xlsx": build_fig5,
+    "confusion_matrices.xlsx": build_confusion,
     "tables.xlsx": build_tables,
 }
 

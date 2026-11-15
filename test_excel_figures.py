@@ -44,6 +44,7 @@ WORKBOOKS = (
     "fig3_sensor_axis.xlsx",
     "fig4_partitions.xlsx",
     "fig5_run_scatter.xlsx",
+    "confusion_matrices.xlsx",
     "tables.xlsx",
 )
 TOL = 5e-4  # CHANGES.md prints 3 decimals (4 for RMSE)
@@ -326,6 +327,48 @@ def test_fig3_fig4_fig5_contents(built: Path) -> None:
     assert {r["identity"] for r in fig5} == {
         "test_2:001", "test_2:002", "test_2:003", "testing_20251124:003", "testing_20251124:004",
         "testing_20251124:005", "testing_20251124:007", "testing_20251124:008"}
+
+
+@requires_results
+def test_confusion_matrices_match_t4(built: Path) -> None:
+    rows = _rows(built / "confusion_matrices.xlsx")
+    totals: dict[tuple[str, str], int] = defaultdict(int)
+    diagonal: dict[tuple[str, str], int] = defaultdict(int)
+    for r in rows:
+        totals[(r["unit"], r["model_key"])] += r["count"]
+        if r["true_class"] == r["predicted_class"]:
+            diagonal[(r["unit"], r["model_key"])] += r["count"]
+    run = {k: v for (u, k), v in totals.items() if u == "run"}
+    window = {k: v for (u, k), v in totals.items() if u == "window"}
+    assert len(run) == 49 and set(run.values()) == {28}
+    assert len(window) == 47 and set(window.values()) == {307}
+    assert set(run) - set(window) == {"local_only/k2_natural/seed4601/client_0",
+                                      "local_only/k2_natural/seed4601/client_1"}
+    classes = {r["predicted_class"] for r in rows}
+    assert classes == {"no_walking", "test_2:001", "test_2:002", "test_2:003", "testing_20251124:003",
+                       "testing_20251124:004", "testing_20251124:005", "testing_20251124:007",
+                       "testing_20251124:008"}
+    assert {r["true_class"] for r in rows if r["unit"] == "run"} == classes - {"no_walking"}
+
+    def correct(key: str) -> int:
+        return diagonal[("run", key)]
+
+    for seed in (4601, 4602, 4603):
+        for key in (f"centralized/seed{seed}", f"fl/k2_iid/seed{seed}", f"fl/k2_natural/seed{seed}"):
+            assert correct(key) == 28, key
+        assert correct(f"fl/k3_dirichlet0.1/seed{seed}") == 22
+        assert correct(f"fl/k3_dirichlet0.3/seed{seed}") == 25
+        assert [correct(f"local_only/k3_dirichlet0.1/seed{seed}/client_{c}") for c in range(3)] == [10, 6, 22]
+    assert [correct(f"local_only/k2_natural/seed4601/client_{c}") for c in range(2)] == [13, 15]
+    assert [correct(f"local_only/k3_iid/seed4601/client_{c}") for c in range(3)] == [27, 28, 28]
+    assert [correct(f"local_only/k3_rho0/seed4601/client_{c}") for c in range(3)] == [28, 28, 26]
+    assert [correct(f"local_only/k3_dirichlet0.3/seed4602/client_{c}") for c in range(3)] == [10, 16, 24]
+
+    recall = _rows(built / "confusion_matrices.xlsx", "recall")
+    assert len(recall) == 49 * 8
+    for key in run:
+        assert sum(r["correct"] for r in recall if r["model_key"] == key) == correct(key), key
+        assert sum(r["runs"] for r in recall if r["model_key"] == key) == 28, key
 
 
 def _text_content(xml: str) -> str:
