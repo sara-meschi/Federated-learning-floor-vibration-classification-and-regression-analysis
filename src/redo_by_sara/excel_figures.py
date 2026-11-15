@@ -606,7 +606,7 @@ def git_commit(repo: Path) -> str:
                               check=True).stdout.strip()
     try:
         head = git("rev-parse", "HEAD")
-        dirty = git("status", "--porcelain")
+        dirty = git("status", "--porcelain", "--untracked-files=no")
     except (OSError, subprocess.CalledProcessError):
         return "unknown (not a git checkout)"
     return head + (" (with uncommitted changes)" if dirty else "")
