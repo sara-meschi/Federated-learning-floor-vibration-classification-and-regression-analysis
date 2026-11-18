@@ -614,7 +614,8 @@ def git_commit(repo: Path) -> str:
 
 def write_notes(wb: Workbook, build: Build, title: str, description: str,
                 columns: Mapping[str, str], sources: Sequence[str], extra: Sequence[str] = (),
-                metrics: Sequence[str] | None = None, styled_points: bool = True) -> Worksheet:
+                metrics: Sequence[str] | None = None, styled_points: bool = True,
+                seeds: str = SEEDS_TEXT) -> Worksheet:
     ws = _sheet(wb, "notes")
     ws.column_dimensions["A"].width = 30
     ws.column_dimensions["B"].width = 120
@@ -639,7 +640,7 @@ def write_notes(wb: Workbook, build: Build, title: str, description: str,
         put("point styles", STYLING_NOTE)
     for text in extra:
         put("note", text)
-    put("seeds", SEEDS_TEXT)
+    put("seeds", seeds)
     line += 1
     put("Metric definitions", bold=True)
     for name, text in METRIC_DEFINITIONS:

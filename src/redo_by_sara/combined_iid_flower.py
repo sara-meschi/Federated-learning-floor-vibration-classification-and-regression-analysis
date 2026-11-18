@@ -98,6 +98,8 @@ def condition_label(config: dict[str, Any]) -> str:
     label = f"{config['num_clients']}client_{config['partition_scheme']}"
     if config.get("dirichlet_alpha") is not None:
         label += f"_alpha{config['dirichlet_alpha']:g}"
+    if config.get("partition_seed") is not None:
+        label += f"_partition{config['partition_seed']}"
     if config.get("channel_overlap") is not None:
         label += f"_rho{config['channel_overlap']:g}"
     if config.get("run_mode", "federated") == "local_only":
@@ -159,6 +161,11 @@ def load_combined_iid_flower_config(
     dirichlet_alpha = federated.get("dirichlet_alpha")
     if (partition_scheme == "dirichlet") != (dirichlet_alpha is not None):
         raise ValueError("dirichlet_alpha is required for, and only for, partition_scheme: dirichlet.")
+    # Optional, Dirichlet only: the seed of the partition draw, separate from the split
+    # and initialization seeds. Absent, the draw uses split_seed exactly as before.
+    partition_seed = raw.get("partition_seed")
+    if partition_seed is not None and partition_scheme != "dirichlet":
+        raise ValueError("partition_seed applies to partition_scheme: dirichlet only.")
     channel_overlap = federated.get("channel_overlap")
     if channel_overlap is not None:
         from .channel_availability import CHANNEL_OVERLAPS
@@ -211,6 +218,7 @@ def load_combined_iid_flower_config(
         "num_clients": num_clients,
         "partition_scheme": partition_scheme,
         "dirichlet_alpha": None if dirichlet_alpha is None else float(dirichlet_alpha),
+        "partition_seed": None if partition_seed is None else int(partition_seed),
         "channel_overlap": None if channel_overlap is None else float(channel_overlap),
         "num_rounds": int(federated["num_rounds"]),
         "local_epochs": int(federated["local_epochs"]),
@@ -1019,6 +1027,7 @@ def audit_combined_iid_flower_setup(
         seed=config["split_seed"],
         dirichlet_alpha=config["dirichlet_alpha"],
         channel_overlap=config["channel_overlap"],
+        dirichlet_seed=config.get("partition_seed"),
     )
     classification_normalization = _normalization_sufficient_statistics_audit(
         classification, [partition.classification_indices for partition in partitions]

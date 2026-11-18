@@ -709,11 +709,17 @@ def build_combined_partitions(
     *,
     dirichlet_alpha: float | None = None,
     channel_overlap: float | None = None,
+    dirichlet_seed: int | None = None,
 ) -> tuple[list[ClientPartition], dict[str, Any]]:
     """Build a run-atomic client partition shared by both tasks, plus its audit.
 
     ``seed`` is the **split seed**: partitions are part of the data setup, not of
     training, so they do not vary with the initialization seed.
+
+    ``dirichlet_seed`` (Dirichlet only) draws the partition from a seed of its own
+    instead of the split seed, for repeated partition draws at a fixed split. Left as
+    ``None``, the Dirichlet draw uses ``seed`` exactly as before and the audit is
+    unchanged.
 
     The returned indices refer to the original, global artifact tensors.  Local
     training code may shuffle those indices after partitioning, but must not
@@ -737,6 +743,8 @@ def build_combined_partitions(
 
     if (scheme == "dirichlet") != (dirichlet_alpha is not None):
         raise ValueError("dirichlet_alpha is required for, and only for, the dirichlet scheme.")
+    if dirichlet_seed is not None and scheme != "dirichlet":
+        raise ValueError("dirichlet_seed applies to the dirichlet scheme only.")
     if channel_overlap is not None and (scheme != "iid" or num_clients != 3):
         raise ValueError("Channel-availability layouts apply to the IID K=3 partition only.")
 
@@ -747,8 +755,10 @@ def build_combined_partitions(
         assignment, block_audit = _assign_iid(profiles, num_clients, seed)
     elif scheme == "dirichlet":
         assignment, dirichlet_audit = _assign_dirichlet(
-            profiles, num_clients, seed, float(dirichlet_alpha)
+            profiles, num_clients, seed if dirichlet_seed is None else int(dirichlet_seed), float(dirichlet_alpha)
         )
+        if dirichlet_seed is not None:
+            dirichlet_audit["partition_seed"] = int(dirichlet_seed)
     else:
         assignment, sources = _assign_natural(profiles, num_clients)
 

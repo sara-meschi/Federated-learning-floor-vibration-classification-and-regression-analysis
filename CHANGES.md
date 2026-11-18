@@ -4,6 +4,209 @@ What changed, and every number that moved as a result. Newest first.
 
 ---
 
+## Alpha sweep — design and pre-registered analysis (2026-11-18)
+
+Branch `alpha-sweep`, cut from `main` (`19feaf2`). The advisor asked why FL Dirichlet
+regression is better at α = 0.1 (RMSE 0.0389, skill +0.079) than at α = 0.3 (RMSE 0.0451,
+skill −0.240), and whether there is any trend in α. **This entry is written before any
+sweep job runs.** The analysis below is fixed, and it will be reported whatever the
+outcome. No number moved.
+
+### Step 1: diagnosis from saved predictions (no training)
+
+Both relabel runs are FL K=3 Dirichlet regression at seed 4601, read from
+`artifacts/relabel/fl/k3_dirichlet{0.1,0.3}/seed4601/regression/`.
+
+- **Where α = 0.3 loses.** It is worse than α = 0.1 by 0.01467 m²/s² in SSE, a net of
+  large opposite contributions:
+  - testing_20251124:005 adds +0.0244. Its predicted residuals are −0.05 to −0.13 m/s,
+    on runs that sit within ±0.012 m/s of the lookup. One run, testing_20251124:005:004,
+    adds +0.0170 by itself.
+  - test_2:001 adds +0.0062 and testing_20251124:004 adds +0.0038.
+  - testing_20251124:007 gives back −0.0186, mainly run :012: α = 0.3 predicted +0.077
+    against an actual residual of +0.174.
+- **testing_20251124:007:012 alone is 66% of the lookup's SSE** (0.0303 of 0.0460).
+  Every skill on this split leans on that run.
+- **Model SSE − lookup SSE, split** (m²/s²):
+
+  | | testing_20251124:007 | Other 25 runs | Total |
+  |---|---|---|---|
+  | α = 0.3 | −0.02245 | +0.03347 | +0.01102 |
+  | α = 0.1 | −0.00383 | +0.00018 | −0.00365 |
+
+- **Prediction spread:**
+
+  | | 28 runs | Saved window value |
+  |---|---|---|
+  | α = 0.3 | 1.004 | 1.772 |
+  | α = 0.1 | 0.175 | 0.197 |
+
+  The 28-run spread is std(predicted residual) ÷ std(actual residual) over the 28 test
+  runs. The saved value is std of the 238 window predicted residuals ÷ std of the 28 run
+  actual residuals.
+- **Partitions** (training runs, client_0 / client_1 / client_2):
+  - α = 0.3: 18 / 21 / 73. α = 0.1: 20 / 17 / 75.
+  - testing_20251124:005 (13 runs) is on client_1 only, in **both** partitions.
+  - testing_20251124:007 is 10 of 11 runs on client_2 (α = 0.3) and 11 of 11 (α = 0.1).
+- **Reading:** the α = 0.1 model barely leaves the lookup. The α = 0.3 model deviates as
+  much as the targets vary: it gains on testing_20251124:007 and loses more elsewhere.
+  The isolation of testing_20251124:005 is the same in both partitions. So these two runs
+  separate model behaviour, not partition placement, and not α: one draw and one init seed
+  per α cannot.
+
+### Design
+
+**Runs:**
+- **α:** α ∈ {0.05, 0.1, 0.3, 1, 10}, K = 3, FL regression.
+- **Settings, as the relabel runs:** FedAvg, E = 5, persistent client optimizer,
+  60 rounds, `client_num_cpus: 3`, 2-identity floor, split seed 4601, init seed 4601.
+- **Only the Dirichlet partition seed varies:** 4601 / 5601 / 6601 = draws 1 / 2 / 3.
+- **Draw 1 already exists for two α values.** Draw 1 is the split-seed partition every
+  earlier Dirichlet run used, so the relabel α = 0.1 and α = 0.3 runs are draw 1 of those
+  α. They are read from `artifacts/relabel` (read-only) and not rerun.
+- **Confirmatory set:** 15 runs, of which 13 are new jobs.
+- **Initialization controls** (not in the confirmatory set): α = 0.1 and α = 0.3,
+  draw 1, init seed 4602. They separate partition effects from training-trajectory
+  effects on spread. Their spread and RMSE are reported next to the init-4601 runs.
+- **15 new jobs in total**, all under `artifacts/alpha_sweep/`. Relabel and S5 results
+  are never written.
+
+**New config key `partition_seed`:**
+- Optional and Dirichlet only. The loader rejects it for IID and natural, and
+  `build_combined_partitions(dirichlet_seed=…)` rejects it likewise.
+- When absent, the Dirichlet draw uses `split_seed` exactly as before, and the saved
+  partition audit is unchanged; `partition_seed` enters the audit only when set.
+- **Checked:**
+  - partition seed 4601 rebuilds both relabel run → client CSVs byte for byte;
+  - no config in `configs/` sets the key (the five sweep configs mention it only in
+    comments; the queue passes it with `--set`).
+
+**Partition draws:** these are part of the data setup, so they are known before
+training. Training runs per client:
+
+| α | Draw 1 (4601) | Draw 2 (5601) | Draw 3 (6601) |
+|---|---|---|---|
+| 0.05 | 37 / 36 / 39 (floor: 1 redraw) | 34 / 55 / 23 | 52 / 40 / 20 |
+| 0.1 | 20 / 17 / 75 (relabel) | 22 / 9 / 81 | 13 / 48 / 51 |
+| 0.3 | 18 / 21 / 73 (relabel) | 37 / 37 / 38 | 42 / 33 / 37 |
+| 1 | 38 / 39 / 35 | 18 / 49 / 45 | 46 / 33 / 33 |
+| 10 | 38 / 40 / 34 | 41 / 36 / 35 | 36 / 42 / 34 |
+
+The 2-identity floor binds once (α = 0.05, draw 1); every other draw was accepted first
+time. With 8 identities and few runs each, imbalance in client size does not fall
+steadily as α grows: at α ≤ 0.3, two draws are near-balanced.
+
+### Pre-registered analysis (fixed now)
+
+**Rules for every statistic:**
+- All measured confirmatory runs enter it.
+- Gate outcomes (trained / did not train / collapsed) are labels, never exclusions.
+- Conclusions are final only when all 15 confirmatory runs are measured.
+
+1. **Per α:** mean ± sample std of RMSE and of skill over the 3 draws, with every draw
+   plotted. Per-run intervals are the run-level bootstrap (skill) and the matched RMSE
+   interval (10,000 resamples, seed 4601).
+2. **Primary (confirmatory):** Spearman ρ(α, RMSE) over the 15 runs, using average ranks
+   because each α has 3 tied values.
+   - **p-value:** two-sided Monte Carlo permutation, 100,000 shuffles of the RMSE ranks,
+     generator seed 4601, p = (1 + #|ρ*| ≥ |ρ|) / (1 + N).
+   - Exhaustive enumeration (15! / 3!⁵ = 168,168,000 distinct arrangements) is replaced
+     by this Monte Carlo test; the step-2 proposal had said "exact".
+   - ρ(α, skill) is reported alongside.
+3. **Support rule** for "RMSE follows how far the model deviates from the lookup, not α":
+   - **Supported** if |ρ(spread, RMSE)| > |ρ(α, RMSE)| and p(α, RMSE) ≥ 0.05.
+   - Spread is the 28-run spread; the saved window value is recorded next to it, not
+     tested.
+   - ρ(α, spread) is reported with it.
+4. **Variance rule:** between-α spread (sample std of the five per-α mean RMSEs) is
+   compared with within-α spread (mean of the five per-α sample stds of RMSE). If
+   within ≥ between, the conclusion is that differences are dominated by the particular
+   draw, not α. It is reported whatever the outcome.
+5. **Exploratory, not confirmatory:** each per-run descriptor, as a Spearman ρ against
+   RMSE with the same permutation test, each also plotted against RMSE:
+   - client run-count imbalance: the largest client's share of the 112 training runs, and
+     the coefficient of variation (population std ÷ mean) of the three client totals;
+   - each identity's share of its training runs on the largest client (8 values), and
+     their mean. The largest client is the one with the most runs; ties go to the lowest
+     client ID;
+   - testing_20251124:007's share on the largest client, and the number of clients
+     holding it;
+   - model SSE − lookup SSE from testing_20251124:007 and from the other identities.
+     Their sum is SSE_model − SSE_lookup exactly, so the split describes and does not
+     test.
+6. **Post hoc / exploratory**, suggested by the step-1 runs and never part of the
+   confirmatory test: the number of identities whose training runs all sit on one client
+   that is not the largest. It is 2 for α = 0.1 draw 1 (testing_20251124:004 and :005) and
+   1 for α = 0.3 draw 1 (testing_20251124:005).
+7. **Caveats** that go with any write-up:
+   - spread is an outcome of training, not a setting;
+   - with n = 15 and about 13 descriptors, the descriptor correlations are exploratory;
+   - only item 2 is confirmatory.
+
+### Files
+
+- **New:**
+  - `src/redo_by_sara/alpha_sweep.py`: the job matrix, commands, descriptors, the
+    statistics, the derived tables and the workbook;
+  - `scripts/run_alpha_sweep.py`: the queue;
+  - `scripts/make_alpha_sweep_excel.py`;
+  - `configs/alpha_sweep_k3_dirichlet{0.05,0.1,0.3,1,10}.yaml`: the relabel Dirichlet
+    config with only α and the unused `output_dir` changed;
+  - `test_alpha_sweep.py`: 13 tests.
+- **Edited:**
+  - `combined_iid_fl_partitioning.py`: the `dirichlet_seed` keyword;
+  - `combined_iid_flower.py`: the `partition_seed` key, passed to the partitioner, and
+    named in the condition label only when set;
+  - `excel_figures.write_notes`: an optional seeds line.
+- **Queue:**
+  - options `--dry-run`, `--stop-by HH:MM`, `--only` and `--derived-only`;
+  - restart-skip, so a killed job is set aside and re-run;
+  - one status line per job, and `caffeinate -i` for child jobs;
+  - after every job it rebuilds `results_index.csv`, `derived/alpha_sweep_runs.csv` and
+    `derived/alpha_sweep_analysis.json`.
+- **Preflight** refuses to start unless:
+  - the environment is the `fl` env with flwr 1.29.0 and ray 2.51.1;
+  - the tree is committed;
+  - every sweep config equals the relabel Dirichlet config except α;
+  - partition seed 4601 rebuilds both relabel partitions byte for byte;
+  - every job's setup audit passes with writes disabled.
+- **Workbook:** `excel/alpha_sweep.xlsx`, with sheets in this order:
+  - `data`: one row per run with RMSE and skill intervals, the error formulas, the
+    descriptors and average-rank formulas;
+  - per-α summary formulas;
+  - `chart`:
+    - RMSE vs α and skill vs α, on a log₁₀ x axis, with every draw plus the mean ± std;
+    - RMSE vs spread;
+    - the 007 gain against the loss elsewhere;
+    - RMSE vs each partition descriptor and the post-hoc count;
+  - `stats`: every pre-registered quantity, with live CORREL-of-ranks and STDEV/AVERAGE
+    formulas next to the Python values;
+  - `notes`.
+
+### Verification (before the queue)
+
+- **Tests:** `test_alpha_sweep.py` 13 passed. The step-1 literals are reproduced: spread
+  1.0044 / 0.1752, saved 1.7718 / 0.1973, and the 007 vs other SSE splits.
+- **Partitions:** partition seed 4601 is byte-identical to both relabel partitions, and
+  all 13 new draws meet the floor.
+- **Workbook formulas:** pycel (in a throwaway venv) evaluated a 17-row synthetic
+  workbook with 0 errors:
+  - the live rank-based Spearman equals the Python ρ to 12 digits;
+  - the per-α means and stds and the between/within values equal Python.
+
+  pycel lacks CORREL and STDEV, so those two were checked from the evaluated cells.
+- **Bug found and fixed in that check:** a rank formula pointed two columns off, because
+  the error columns were inserted after the column letters were taken. A test now pins
+  every rank formula to its source column.
+- **Preflight** against a scratch root failed only on "uncommitted changes" (expected
+  before your commit). `--dry-run` lists the 15 jobs and the 2 reused runs and writes
+  nothing.
+- **Estimate:** 15 jobs × 32 min static = 8.0 h. The relabel FL regression jobs measured
+  28.9–31.8 min, so about 7.3–8 h. The estimate switches to measured times after the
+  first job.
+
+---
+
 ## Excel confusion matrices (2026-11-14)
 
 New workbook `excel/confusion_matrices.xlsx`, built by `build_confusion` in
