@@ -958,6 +958,17 @@ def build_fig2_classification(build: Build) -> Workbook:
     return wb
 
 
+def _dirichlet_draw1_note(points: Sequence[Mapping[str, Any]]) -> str:
+    """The pointer to the alpha sweep, with the draw-1 FL values this figure plots."""
+    values = []
+    for condition, alpha in (("k3_dirichlet0.1", "0.1"), ("k3_dirichlet0.3", "0.3")):
+        p = next(p for p in points if p["family"] == "fl" and p["condition"] == condition and int(p["seed"]) == 4601)
+        values.append(f"α={alpha} RMSE {p['rmse']:.4f} m/s, skill {p['skill']:+.3f}")
+    return ("Dirichlet points are partition draw 1; see alpha_sweep.xlsx for 3 draws per α and 5 α values. "
+            "The draw-1 FL values plotted here (init seed 4601): " + "; ".join(values)
+            + ". alpha_sweep.xlsx lists them as draw 1, partition seed 4601.")
+
+
 def build_fig2_regression_skill(build: Build) -> Workbook:
     points = build.regression
     rows = _fig2_rows(points, "skill", "ci_low", "ci_high", ())
@@ -995,6 +1006,7 @@ def build_fig2_regression_skill(build: Build) -> Workbook:
             "legend_key": "Chart helper, intentionally empty: the legend-key series reference it."}),
         [r["source_file"] for r in rows] + ["artifacts/relabel/results_index.csv", "artifacts/s5/results_index.csv",
                                             "artifacts/relabel/derived/s5_disposition.csv"],
+        extra=[_dirichlet_draw1_note(points)],
         metrics=("skill", "lookup RMSE", "bootstrap 95% interval", "outcome"))
     return wb
 
@@ -1045,7 +1057,7 @@ def build_fig2_regression_rmse(build: Build) -> Workbook:
         extra=["RMSE intervals are new, derived numbers: the percentile interval of RMSE over the "
                "same 10,000 run resamples (same generator, seed and draws) as the saved skill "
                "intervals. The build re-derives every saved skill interval from those draws and "
-               "checks it is equal."],
+               "checks it is equal.", _dirichlet_draw1_note(points)],
         metrics=("lookup RMSE", "bootstrap 95% interval", "outcome"))
     return wb
 
@@ -1186,6 +1198,169 @@ def build_fig3(build: Build) -> Workbook:
                 "−0.1. Zero rows: the zero line."}),
         [r["source_file"] for r in rows],
         metrics=("run accuracy", "Wilson 95% interval", "skill", "bootstrap 95% interval", "outcome"))
+    return wb
+
+
+# --------------------------------------------------------------------------------------
+# Fig 6: the subject-skew axis (classification)
+# --------------------------------------------------------------------------------------
+
+#: (condition, label), in order of increasing subject skew. The natural split is a
+#: reference point, not a step of the α ladder: K=2, and its clients differ in campaign.
+SKEW_LEVELS = (
+    ("k3_iid", "IID (K=3)"),
+    ("k3_dirichlet0.3", "Dirichlet α=0.3 (K=3)"),
+    ("k3_dirichlet0.1", "Dirichlet α=0.1 (K=3)"),
+    ("k2_natural", "Natural split (K=2, disjoint subjects)"),
+)
+SKEW_SEED = 4601
+SKEW_MAX_CLIENTS = 3
+
+
+def _skew_seed_notes(points: Sequence[Mapping[str, Any]]) -> tuple[list[str], list[str]]:
+    """What changes across init seeds, computed from the points. FL counts must be equal
+    across seeds wherever a level has several (asserted); returns those levels' FL counts
+    and every local-only client whose count differs from seed 4601."""
+    fl_counts, local_diffs = [], []
+    for condition, label in SKEW_LEVELS:
+        fl = {p["seed"]: p["correct"] for p in points if p["condition"] == condition and p["family"] == "fl"}
+        if len(fl) > 1:
+            if len(set(fl.values())) != 1:
+                raise AssertionError(f"{condition}: FL run accuracy differs across seeds {fl}")
+            fl_counts.append(f"{label}: {fl[SKEW_SEED]}/28 at seeds {', '.join(str(s) for s in sorted(fl))}")
+        local = {(p["seed"], p["client"]): p["correct"] for p in points
+                 if p["condition"] == condition and p["family"] == "local_only"}
+        for (seed, client), correct in sorted(local.items()):
+            base = local.get((SKEW_SEED, client))
+            if seed != SKEW_SEED and base is not None and correct != base:
+                local_diffs.append(f"{label}: local-only {client} at seed {seed} has {correct}/28 correct, against "
+                                   f"{base}/28 at seed {SKEW_SEED}")
+    return fl_counts, local_diffs
+
+
+def build_fig6(build: Build) -> Workbook:
+    points = [p for p in build.classification if p["condition"] in dict(SKEW_LEVELS) or p["family"] == "centralized"]
+    rows = []
+    for condition, label in SKEW_LEVELS:
+        for family in ("fl", "local_only"):
+            rows += [{**p, "level": label, "plotted": "yes" if p["seed"] == SKEW_SEED else "no",
+                      "value": p["accuracy"], "ci_lower": p["ci_low"], "ci_upper": p["ci_high"]}
+                     for p in points if p["condition"] == condition and p["family"] == family]
+    rows += [{**p, "level": "Centralized", "plotted": "reference line", "value": p["accuracy"],
+              "ci_lower": p["ci_low"], "ci_upper": p["ci_high"]} for p in points if p["family"] == "centralized"]
+    fl_counts, local_diffs = _skew_seed_notes(points)
+
+    wb = _new_workbook()
+    ws = wb["data"]
+    columns = ["level", "condition", "family", "seed", "client", "plotted", "correct", "runs", "value", "ci_lower",
+               "ci_upper", "source_file"]
+    table = write_table(ws, rows, columns)
+    rng = {k: table.ref(k).split("!")[1] for k in ("condition", "family", "seed", "client", "value", "ci_lower",
+                                                    "ci_upper")}
+
+    # Summary block right of the table, one row per level: every plotted number is a formula
+    # over the table at seed 4601 (FL value and Wilson bar lengths, local-only mean, sample
+    # std and count, each client's value, the centralized reference).
+    s_columns = ["summary_level", "summary_condition", "fl_value", "fl_err_plus", "fl_err_minus", "local_mean",
+                 "local_std", "local_n", *[f"local_client_{c}" for c in range(SKEW_MAX_CLIENTS)], "centralized_line"]
+    s_table = Table(ws, s_columns, 1, len(SKEW_LEVELS), len(columns) + 3)
+    summary = []
+    for i, (condition, label) in enumerate(SKEW_LEVELS):
+        cell = {k: s_table.cell(k, i, absolute=False) for k in s_columns}
+        fl = f'{rng["condition"]},{cell["summary_condition"]},{rng["family"]},"fl",{rng["seed"]},{SKEW_SEED}'
+        local = f'{rng["condition"]},{cell["summary_condition"]},{rng["family"]},"local_only",{rng["seed"]},{SKEW_SEED}'
+        mask = (f'({rng["condition"]}={cell["summary_condition"]})*({rng["family"]}="local_only")'
+                f'*({rng["seed"]}={SKEW_SEED})')
+        row: dict[str, Any] = {
+            "summary_level": label, "summary_condition": condition,
+            "fl_value": f"=AVERAGEIFS({rng['value']},{fl})",
+            "fl_err_plus": f"=AVERAGEIFS({rng['ci_upper']},{fl})-{cell['fl_value']}",
+            "fl_err_minus": f"={cell['fl_value']}-AVERAGEIFS({rng['ci_lower']},{fl})",
+            "local_mean": f"=AVERAGEIFS({rng['value']},{local})",
+            "local_n": f"=COUNTIFS({local})",
+            # sample std (n − 1), as the CHANGES local-only summaries
+            "local_std": (f'=SQRT(SUMPRODUCT({mask}*({rng["value"]}-{cell["local_mean"]})^2)'
+                          f'/({cell["local_n"]}-1))'),
+            "centralized_line": f'=AVERAGEIFS({rng["value"]},{rng["family"]},"centralized")',
+        }
+        for c in range(SKEW_MAX_CLIENTS):
+            hits = [j for j, r in enumerate(rows) if r["condition"] == condition and r["family"] == "local_only"
+                    and r["seed"] == SKEW_SEED and r["client"] == f"client_{c}"]
+            if len(hits) > 1:
+                raise AssertionError(f"{condition} client_{c}: {len(hits)} rows at seed {SKEW_SEED}")
+            if hits:  # a direct link to the client's cell; blank (a gap) where the level has no such client
+                row[f"local_client_{c}"] = "=" + table.cell("value", hits[0], absolute=False)
+        summary.append(row)
+    write_table(ws, summary, s_columns, first_col=s_table.first_col)
+    ws.column_dimensions[s_table.letter("summary_level")].width = 36
+
+    categories = AxDataSource(strRef=StrRef(f=s_table.ref("summary_level")))
+    chart = LineChart()
+    chart.title = _title("Run accuracy along the subject-skew axis (init seed 4601)")
+    _size(chart, 18, 11)
+
+    def add(column: str, title: str, marker: Marker, error: tuple[str, str] | None = None,
+            color: str = MUTED, line: GraphicalProperties | None = None) -> Series:
+        s = _series(s_table.ref(column), title=title)
+        s.cat = categories
+        _markers_only(s, marker)
+        if line is not None:
+            s.marker, s.graphicalProperties = Marker(symbol="none"), line
+        if error:
+            s.errBars = _custom_error_bars(s_table, plus=error[0], minus=error[1], color=color)
+        chart.series.append(s)
+        return s
+
+    add("fl_value", "FL (FedAvg), Wilson 95% CI", _marker("circle", FL_COLOR, True, 8),
+        ("fl_err_plus", "fl_err_minus"), FL_COLOR)
+    add("local_mean", "Local-only mean ± sample std over clients", _marker("square", LOCAL_COLOR, True, 8),
+        ("local_std", "local_std"), LOCAL_COLOR)
+    for c in range(SKEW_MAX_CLIENTS):
+        add(f"local_client_{c}", "Local-only client", _marker("square", LOCAL_COLOR, False, 5))
+    add("centralized_line", "Centralized (28/28, mean of 3 seeds)", Marker(symbol="none"),
+        line=_line(CENTRAL_COLOR, 1.0, "dash"))
+    _style_axis(chart.x_axis, None, gridlines=False, label_position="low")
+    _style_axis(chart.y_axis, "Run accuracy (majority vote)", minimum=0, maximum=1.05, number_format="0.0",
+                major_unit=0.2)
+    chart.x_axis.crosses = "min"
+    chart.display_blanks = "gap"
+    _place_axes(chart)
+    _legend(chart, deleted=[3, 4])  # one legend entry for the three client series
+    _sheet(wb, "chart").add_chart(chart, "A1")
+
+    write_notes(
+        wb, build, "Fig 6: classification along the subject-skew axis",
+        "Run accuracy on the 28 held-out test runs at four levels of subject skew: K=3 IID, K=3 "
+        "Dirichlet α = 0.3, K=3 Dirichlet α = 0.1, and the natural split. FL (FedAvg) with its "
+        "Wilson 95% interval; local-only as the mean ± std over its clients, with each client's "
+        "own point; the centralized model (28/28 at every seed) as a dashed reference line.",
+        _columns_doc(table.columns, {
+            "level": "Skew level (display label).",
+            "correct": "Test runs whose majority vote is correct.",
+            "runs": "Test runs scored (28).",
+            "plotted": "yes = the row the chart uses (init seed 4601); no = another seed, listed for "
+                       "reference; reference line = centralized.",
+            "value": "Run accuracy = correct / runs.",
+            "summary_* / fl_* / local_* / centralized_line (block right of the table)":
+                "One row per level, all formulas over the table at seed 4601: fl_value and its Wilson "
+                "bar lengths (AVERAGEIFS), local_mean (AVERAGEIFS), local_std (sample std via "
+                "SUMPRODUCT, n − 1), local_n (COUNTIFS), local_client_k (a link to that client's "
+                "value cell; blank where the level has no such client, drawn as a gap), "
+                "centralized_line (AVERAGEIFS over the 3 centralized seeds)."}),
+        [r["source_file"] for r in rows],
+        extra=[
+            f"Plotted at init seed {SKEW_SEED}. The data sheet lists every seed of every level.",
+            "FL counts are identical across seeds wherever a level has 3 seeds (checked when the workbook is "
+            "built): " + "; ".join(fl_counts) + ". Levels not listed have seed 4601 only.",
+            "Local-only differs from seed 4601 at: " + ("; ".join(local_diffs) if local_diffs else "nowhere") + ".",
+            "Local-only std is the sample standard deviation (n − 1) over clients at every level; it "
+            "reproduces the CHANGES.md values 0.452 ± 0.297 (α = 0.1) and 0.500 ± 0.051 (natural).",
+            "The natural split has K=2, and its two clients differ in recording campaign as well as in "
+            "subjects (one campaign per client). It is a reference point, not part of the α ladder.",
+            "In a line chart every series of a level sits at the same x, so the FL and local-only "
+            "markers of a level can overlap.",
+        ],
+        metrics=("run accuracy", "Wilson 95% interval"))
     return wb
 
 
@@ -1756,6 +1931,10 @@ def build_tables(build: Build) -> Workbook:
     for title, rows, columns in sheets:
         ws = wb.create_sheet(title)
         write_table(ws, rows, columns)
+    sweep_root = results.root / "alpha_sweep"
+    t6 = (sweep_root / "derived" / "alpha_sweep_runs.csv").exists()
+    if t6:
+        _alpha_sweep_table(wb.create_sheet("T6_alpha_sweep"), sweep_root)
 
     sources = [
         "artifacts/relabel/results_index.csv", "artifacts/relabel/derived/run_level_classification.csv",
@@ -1792,10 +1971,63 @@ def build_tables(build: Build) -> Workbook:
          "T5 columns": "Run vote of the source probe (label = recording campaign), per source; "
                        "window accuracies and the majority-class test-window rate.",
          "RMSE columns": "value = exact RMSE; lookup_rmse; delta_rmse = value − lookup_rmse; skill "
-                         "with its saved bootstrap interval."},
-        sources,
-        extra=["This workbook holds tables only, no charts."])
+                         "with its saved bootstrap interval.",
+         "T6 columns": "The alpha sweep (FL K=3 Dirichlet regression), one row per run: confirmatory "
+                       "(no for the two init-seed 4602 controls, which are not in the 15-run set), α, "
+                       "draw and its partition seed, init seed, training runs per client, gate outcome, "
+                       "value = RMSE (m/s) with its matched bootstrap interval, skill with its bootstrap "
+                       "interval, spread_runs (std predicted / std actual residual over the 28 test runs) "
+                       "and spread_saved_window (the run's saved window-level spread).",
+         "T6 summary_* (block right of the table)": "Per α over the 15 confirmatory runs, the collapsed "
+                                                    "run included as pre-registered: AVERAGEIFS means, "
+                                                    "sample stds via SUMPRODUCT, and COUNTIFS of trained "
+                                                    "/ did not train / collapsed."},
+        sources + (list(DERIVED_SWEEP_FILES) if t6 else []),
+        extra=["This workbook holds tables only, no charts."]
+        + ([] if t6 else ["T6_alpha_sweep not built: artifacts/alpha_sweep/derived/ is absent."]))
     return wb
+
+
+DERIVED_SWEEP_FILES = ("artifacts/alpha_sweep/derived/alpha_sweep_runs.csv",)
+SWEEP_OUTCOMES = (("trained", "trained"), ("did not train", "did_not_train"), ("collapsed", "collapsed"))
+
+
+def _alpha_sweep_table(ws: Worksheet, sweep_root: Path) -> Table:
+    """T6: every alpha-sweep run as saved in ``derived/``, and the per-α summary of the
+    confirmatory runs as formulas right of it."""
+    from .alpha_sweep import ALPHAS, load_derived
+
+    rows, _ = load_derived(sweep_root)
+    t6 = [{"confirmatory": "yes" if r["role"] == "confirmatory" else "no (init-seed control)",
+           "alpha": r["alpha"], "draw": r["draw"], "partition_seed": r["partition_seed"], "init_seed": r["init_seed"],
+           "client_runs": r["client_runs"], "outcome": r["outcome"], "value": r["rmse"], "ci_lower": r["rmse_ci_low"],
+           "ci_upper": r["rmse_ci_high"], "lookup_rmse": r["lookup_rmse"], "skill": r["skill"],
+           "skill_ci_lower": r["skill_ci_low"], "skill_ci_upper": r["skill_ci_high"], "spread_runs": r["spread_runs"],
+           "spread_saved_window": r["spread_saved_window"]} for r in rows if "rmse" in r]
+    columns = ["confirmatory", "alpha", "draw", "partition_seed", "init_seed", "client_runs", "outcome", "value",
+               "ci_lower", "ci_upper", "lookup_rmse", "skill", "skill_ci_lower", "skill_ci_upper", "spread_runs",
+               "spread_saved_window"]
+    table = write_table(ws, t6, columns)
+    rng = {k: table.ref(k) for k in ("confirmatory", "alpha", "outcome", "value", "skill")}
+    s_columns = ["summary_alpha", "summary_n", "summary_rmse_mean", "summary_rmse_std", "summary_skill_mean",
+                 "summary_skill_std", *[f"summary_{key}" for _, key in SWEEP_OUTCOMES]]
+    s_table = Table(ws, s_columns, 1, len(ALPHAS), len(table.columns) + 3)
+    summary = []
+    for i, alpha in enumerate(ALPHAS):
+        cell = {k: s_table.cell(k, i, absolute=False) for k in s_columns}
+        where = f'{rng["confirmatory"]},"yes",{rng["alpha"]},{cell["summary_alpha"]}'
+        mask = f'({rng["confirmatory"]}="yes")*({rng["alpha"]}={cell["summary_alpha"]})'
+        row: dict[str, Any] = {"summary_alpha": alpha, "summary_n": f"=COUNTIFS({where})"}
+        for key, column in (("rmse", "value"), ("skill", "skill")):
+            mean = cell[f"summary_{key}_mean"]
+            row[f"summary_{key}_mean"] = f"=AVERAGEIFS({rng[column]},{where})"
+            row[f"summary_{key}_std"] = (f'=SQRT(SUMPRODUCT({mask}*({rng[column]}-{mean})^2)'
+                                         f'/({cell["summary_n"]}-1))')
+        for outcome, key in SWEEP_OUTCOMES:
+            row[f"summary_{key}"] = f'=COUNTIFS({where},{rng["outcome"]},"{outcome}")'
+        summary.append(row)
+    write_table(ws, summary, s_columns, first_col=s_table.first_col)
+    return table
 
 
 # --------------------------------------------------------------------------------------
@@ -1810,6 +2042,7 @@ WORKBOOKS: dict[str, Callable[[Build], Workbook]] = {
     "fig3_sensor_axis.xlsx": build_fig3,
     "fig4_partitions.xlsx": build_fig4,
     "fig5_run_scatter.xlsx": build_fig5,
+    "fig6_subject_skew.xlsx": build_fig6,
     "confusion_matrices.xlsx": build_confusion,
     "tables.xlsx": build_tables,
 }

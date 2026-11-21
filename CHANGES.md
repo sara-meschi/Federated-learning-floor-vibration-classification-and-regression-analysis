@@ -4,6 +4,357 @@ What changed, and every number that moved as a result. Newest first.
 
 ---
 
+## Excel: alpha sweep, Fig 6 subject skew, T6 (2026-11-21)
+
+Branch `alpha-sweep`. The alpha-sweep results are added to the Excel outputs, and there is a
+new Fig 6 on the subject-skew axis. **No number moved.** Every value is read from
+`artifacts/alpha_sweep/derived/` and the relabel / S5 results already reported above, and
+nothing is written under `artifacts/`. The rebuilt pre-existing workbooks are identical to the
+committed ones in every data cell and every chart part. Only their notes sheets changed: the
+build commit everywhere, plus the additions below.
+
+### `excel/alpha_sweep.xlsx`, extended
+
+- **Reads `derived/` only.**
+  - `alpha_sweep.load_derived()` types `derived/alpha_sweep_runs.csv` back and returns the
+    saved `alpha_sweep_analysis.json`.
+  - The builder no longer opens the per-run prediction files.
+  - A test recomputes the analysis from the typed-back rows and gets the saved JSON.
+- **Chart A, RMSE vs α** (log₁₀ x axis):
+  - One marker series per draw: circle, square and triangle for draws 1, 2 and 3.
+  - The collapsed run (α = 0.1, draw 2) is its own × series, labelled "collapsed (α=0.1
+    draw 2), in every statistic".
+  - The init-seed 4602 controls are a separate hollow-diamond series, labelled "same
+    partitions as draw 1".
+  - The per-α mean ± std is drawn from the live formula block.
+  - Reference lines:
+    - the lookup at 0.0405;
+    - the centralized residual model, at the mean of init seeds 4601/4602/4603 (0.0385);
+    - its min–max over those seeds (0.0380–0.0388), drawn as two dotted lines because an
+      Excel scatter chart cannot shade a band.
+
+    The centralized values are read from the relabel / S5 results, as Fig 2 reads them. Its
+    three seeds are 0.03799, 0.03883 and 0.03864 m/s.
+- **Chart B, skill vs α:** the same layout, with the zero line and the centralized line at
+  +0.098 (min–max +0.082 to +0.121).
+- **Chart C, RMSE vs spread:** all 15 runs plus the controls. The collapsed point is
+  marked ×.
+- **The collapsed run stays in every statistic.** Its × series is display only.
+  - Its row is sorted after the trained rows, still inside the confirmatory block.
+  - It stays inside the rank-formula ranges: its ranks are 5 for α, 12 for RMSE and 1 for
+    spread.
+  - It stays in the per-α AVERAGEIFS / SUMPRODUCT formulas, which filter on role and α only.
+  - It stays in the stats sheet.
+  - The stats sheet now also lists the pre-registered per-α RMSE and skill. α = 0.1 reads
+    **0.0389 ± 0.0018 RMSE and +0.077 ± 0.085 skill**.
+  - The without-collapse α = 0.1 values (0.0380 ± 0.0012, +0.120 ± 0.058) appear only in the
+    block headed "SENSITIVITY, NOT PRE-REGISTERED". That block now lists skill too.
+  - Tests pin all of this.
+
+### `excel/fig6_subject_skew.xlsx`, new
+
+- **The four levels,** in order of skew: IID (K=3), Dirichlet α = 0.3 (K=3), Dirichlet
+  α = 0.1 (K=3), and "Natural split (K=2, disjoint subjects)".
+- **What is plotted:** run accuracy at init seed 4601, all from the relabel results.
+  - FL with its Wilson 95% interval: 28/28, 25/28, 22/28 and 28/28.
+  - Local-only as the mean ± **sample** std (n − 1) over clients: 0.988 ± 0.021,
+    0.607 ± 0.270, 0.452 ± 0.297 and 0.500 ± 0.051. Sample std is the one that reproduces the
+    earlier CHANGES values 0.452 ± 0.297 and 0.500 ± 0.051; population std would give 0.243
+    and 0.036.
+  - Each client's point.
+  - A centralized reference line at 28/28, the mean of 3 seeds.
+- **Formulas:** every plotted value is a formula over the data sheet. Each client point
+  links to its cell. The natural split has no client_2, and that cell is left blank, so it
+  draws as a gap.
+- **The notes sheet states:**
+  - the init seed;
+  - that FL counts are identical across seeds wherever 3 seeds exist (α = 0.3, α = 0.1,
+    natural). The build asserts this;
+  - that local-only differs only at α = 0.3, seed 4602 (client_2: 24/28 vs 25/28). This is
+    computed from the data;
+  - the std definition;
+  - that the natural split is K=2 and differs in campaign as well as subjects, so it is a
+    reference point, not part of the α ladder.
+- **Built** by `make_excel_figures.py` (added to `WORKBOOKS`).
+
+### `excel/tables.xlsx`: new sheet `T6_alpha_sweep`
+
+- **Table:** the 17 runs from `derived/alpha_sweep_runs.csv`. Columns:
+  - `confirmatory` (yes, or "no (init-seed control)");
+  - α, draw, partition seed, init seed, client runs, outcome;
+  - RMSE with its interval and `err_plus` / `err_minus` formulas;
+  - skill with its interval;
+  - spread over 28 runs, and the saved spread.
+- **Per-α summary** of the 15 confirmatory runs, as formulas: mean ± sample std of RMSE and
+  skill (collapsed included), and COUNTIFS of trained / did not train / collapsed. The
+  counts are 3/0/0 at every α except α = 0.1, which is 2/0/1.
+
+### Fig 2 regression workbooks
+
+- **Plotted points unchanged:** cell-for-cell and chart-XML identical to the committed files.
+- **Notes sheet:** one line added: "Dirichlet points are partition draw 1; see
+  alpha_sweep.xlsx for 3 draws per α and 5 α values." It is followed by the draw-1 FL values
+  plotted there, generated from the data: α = 0.1 RMSE 0.0389 m/s, skill +0.079; α = 0.3
+  RMSE 0.0451 m/s, skill −0.240.
+
+### Verification
+
+- **Formulas:** every new formula block was evaluated with pycel (scratch environment) and
+  matches the values above: the alpha-sweep per-α block and reference lines, the Fig 6
+  summary, and the T6 summary. Excel computes them on open (`fullCalcOnLoad`).
+- **Tests:**
+  - `test_excel_figures.py` adds 7 tests:
+    - the 17-row table as independent literals, checked against T6 and against
+      `alpha_sweep.xlsx`;
+    - the collapsed run inside every statistic, with the exact α = 0.1 values, and the
+      sensitivity value confined to its block;
+    - the alpha-sweep chart series and the centralized reference values;
+    - the Fig 6 values, sample std, levels and notes;
+    - the Fig 2 notes line;
+    - chart-reference validity, plus the "linked" and personal-name scans, for
+      `alpha_sweep.xlsx`. Fig 6 and T6 are covered by the existing all-workbook checks.
+  - `test_alpha_sweep.py` adds 1 test: `load_derived` round-trips to the saved analysis.
+- **Full suite:** 251 passed, 1 skipped, 3 warnings (the usual third-party ones). That is 243
+  before, plus 8 new.
+
+---
+
+## Alpha sweep — Results (2026-11-19)
+
+Branch `alpha-sweep`. This reports the sweep designed in the entry below, using the
+analysis pre-registered there. No earlier number moved: the relabel α = 0.1 and α = 0.3
+runs were read, not rerun, and their values are unchanged.
+
+### Runs
+
+- **Queue:** 13 new jobs, run on the M5 in two sessions (2026-11-18 14:11–16:28 and
+  22:15–02:57), under `artifacts/alpha_sweep/`. Every new job reached a terminal state; none
+  crashed.
+- **Draw 1 of α = 0.1 and 0.3:** reused from `artifacts/relabel` (read-only).
+- **Wall time per job:** 22.9–37.3 min.
+- **Sleep during the first session:** the Mac slept about 16 min during job 2 (α = 1,
+  draw 1). Its wall-clock span is 53.5 min, against 37.3 min logged. Sleep only pauses the
+  process. The job exited 0 and passed both gates. The second session ran under
+  `caffeinate -s -i` with no sleep.
+- **Gate outcomes:** 16 of 17 runs trained. One collapsed: **α = 0.1, draw 2** (partition
+  seed 5601, init 4601, client runs 22/9/81). Its detector record:
+  - 1 distinct value across the 238 window outputs (1 across the 28 runs);
+  - relative output spread 0.0;
+  - final global-train standardized MSE 1.0004;
+  - skill −0.008 [−0.022, +0.003];
+  - RMSE 0.0407, against the lookup's 0.0405.
+
+  This is the constant-predictor failure CLAUDE.md describes. The queue recorded it as
+  `failed_detector`, FLAT.
+
+### Per run
+
+RMSE in m/s with the matched-bootstrap 95% interval; skill with the run-level bootstrap
+95% interval. The lookup RMSE is 0.0405 for every run. Spread is the 28-run value; the saved
+window value is in brackets. ΔSSE (m²/s²) is model SSE − lookup SSE, split into
+testing_20251124:007 and the other identities. "Isolated" is the post-hoc count of
+identities whose training runs all sit on one non-largest client.
+
+| α | Draw | Init | Outcome | RMSE | Skill | Spread [saved] | ΔSSE :007 / other | Client runs | Largest share | Isolated |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 0.05 | 1 | 4601 | trained | 0.0377 [0.0199, 0.0551] | +0.134 [−1.655, +0.402] | 0.613 [1.005] | −0.01379 / +0.00764 | 37/36/39 | 0.348 | 5 |
+| 0.1 | 1 | 4601 | trained (relabel) | 0.0389 [0.0175, 0.0603] | +0.079 [−0.106, +0.226] | 0.175 [0.197] | −0.00383 / +0.00018 | 20/17/75 | 0.670 | 2 |
+| 0.3 | 1 | 4601 | trained (relabel) | 0.0451 [0.0294, 0.0599] | −0.240 [−4.913, +0.476] | 1.004 [1.772] | −0.02245 / +0.03347 | 18/21/73 | 0.652 | 1 |
+| 1 | 1 | 4601 | trained | 0.0390 [0.0211, 0.0548] | +0.073 [−2.278, +0.445] | 0.678 [0.899] | −0.01684 / +0.01349 | 38/39/35 | 0.348 | 1 |
+| 10 | 1 | 4601 | trained | 0.0392 [0.0206, 0.0551] | +0.063 [−2.439, +0.452] | 0.700 [1.307] | −0.01725 / +0.01438 | 38/40/34 | 0.357 | 0 |
+| 0.05 | 2 | 4601 | trained | 0.0402 [0.0248, 0.0549] | +0.018 [−1.580, +0.362] | 0.606 [0.911] | −0.01703 / +0.01620 | 34/55/23 | 0.491 | 2 |
+| 0.1 | 2 | 4601 | **collapsed** | 0.0407 [0.0189, 0.0631] | −0.008 [−0.022, +0.003] | 0.000 [0.000] | +0.00025 / +0.00014 | 22/9/81 | 0.723 | 1 |
+| 0.3 | 2 | 4601 | trained | 0.0370 [0.0218, 0.0512] | +0.167 [−1.777, +0.469] | 0.636 [1.076] | −0.01786 / +0.01017 | 37/37/38 | 0.339 | 1 |
+| 1 | 2 | 4601 | trained | 0.0383 [0.0214, 0.0547] | +0.108 [−1.598, +0.390] | 0.564 [1.073] | −0.01513 / +0.01017 | 18/49/45 | 0.438 | 0 |
+| 10 | 2 | 4601 | trained | 0.0420 [0.0251, 0.0590] | −0.075 [−2.135, +0.256] | 0.683 [0.857] | −0.01175 / +0.01518 | 41/36/35 | 0.366 | 0 |
+| 0.05 | 3 | 4601 | trained | 0.0473 [0.0289, 0.0638] | −0.364 [−3.880, +0.231] | 0.819 [0.990] | −0.01277 / +0.02952 | 52/40/20 | 0.464 | 4 |
+| 0.1 | 3 | 4601 | trained | 0.0371 [0.0222, 0.0506] | +0.161 [−2.556, +0.567] | 0.764 [1.377] | −0.02111 / +0.01371 | 13/48/51 | 0.455 | 3 |
+| 0.3 | 3 | 4601 | trained | 0.0344 [0.0233, 0.0468] | +0.279 [−1.018, +0.499] | 0.578 [0.773] | −0.01986 / +0.00704 | 42/33/37 | 0.375 | 1 |
+| 1 | 3 | 4601 | trained | 0.0386 [0.0201, 0.0580] | +0.092 [−0.406, +0.203] | 0.216 [0.244] | −0.00781 / +0.00357 | 46/33/33 | 0.411 | 0 |
+| 10 | 3 | 4601 | trained | 0.0354 [0.0244, 0.0466] | +0.239 [−1.201, +0.519] | 0.578 [0.927] | −0.02194 / +0.01096 | 36/42/34 | 0.375 | 0 |
+| 0.1 | 1 | **4602** | trained (control) | 0.0383 [0.0230, 0.0544] | +0.106 [−1.546, +0.377] | 0.738 [0.892] | −0.01582 / +0.01094 | 20/17/75 | 0.670 | 2 |
+| 0.3 | 1 | **4602** | trained (control) | 0.0379 [0.0243, 0.0515] | +0.125 [−2.098, +0.457] | 0.765 [1.091] | −0.01980 / +0.01407 | 18/21/73 | 0.652 | 1 |
+
+### Why the pre-registered analysis keeps the collapsed run
+
+- **CLAUDE.md:** "Any regression run must pass the degenerate-model detector before its
+  numbers are used." α = 0.1 draw 2 fails it, so its RMSE and skill are not reported as the
+  performance of a trained model anywhere.
+- **The sweep's question is different.** It asks whether α changes what FL regression
+  delivers on this split, and a collapse is one of the things a given α and draw can
+  deliver. Dropping it would condition the α test on training success, and the draw that
+  collapsed (the most skewed of the 15: largest share 0.723, a 9-run client) is exactly the
+  kind of partition that question is about.
+- **This follows S5.** S5 introduced `trained` / `did not train` / `collapsed` as labels
+  and reported per seed ("k of n seeds collapsed") instead of dropping failed seeds
+  (Session 5 amendment 2, "Three outcome labels replace 'collapsed'"; Session 5 amendment,
+  per-seed reporting). The sweep's
+  pre-registration fixed the same rule before any job ran: gate outcomes are labels, never
+  exclusions.
+- **What enters the statistics** is the constant predictor's RMSE (0.0407, about the
+  lookup's). It is labelled `collapsed` in every table, in the workbook's `outcome` column
+  and here.
+- **The sensitivity check without it is reported below.** It was added after the results
+  were seen and is **not pre-registered**. It stands next to the primary result and never
+  replaces it.
+
+### Pre-registered analysis (15 confirmatory runs; final)
+
+Monte Carlo permutation p-values use 100,000 shuffles, generator seed 4601.
+
+1. **Per α** (mean ± sample std over 3 draws):
+
+   | α | RMSE | Skill |
+   |---|---|---|
+   | 0.05 | 0.0417 ± 0.0050 | −0.071 ± 0.261 |
+   | 0.1 | 0.0389 ± 0.0018 | +0.077 ± 0.085 |
+   | 0.3 | 0.0388 ± 0.0056 | +0.069 ± 0.273 |
+   | 1 | 0.0386 ± 0.0004 | +0.091 ± 0.018 |
+   | 10 | 0.0389 ± 0.0033 | +0.076 ± 0.157 |
+
+2. **Primary (confirmatory): Spearman ρ(α, RMSE) = −0.153, p = 0.596, n = 15.** No
+   monotone trend in α. ρ(α, skill) = +0.153, p = 0.596.
+3. **Support rule:** ρ(spread, RMSE) = +0.350 (p = 0.200) and ρ(α, spread) = −0.011
+   (p = 0.984). |0.350| > |−0.153| and p(α, RMSE) ≥ 0.05, so the rule is **met as
+   written**. ρ(spread, RMSE) is itself not significant, so this supports "spread relates
+   to RMSE at least as strongly as α does", not "spread drives RMSE".
+4. **Variance rule:** between-α spread (sample std of the five per-α means) 0.00131;
+   within-α spread (mean of the five per-α sample stds) 0.00322. Within ≥ between, so **the
+   differences are dominated by the particular partition draw, not by α.**
+5. **Exploratory descriptors vs RMSE** (Spearman ρ, permutation p; n = 15). These are
+   exploratory: with about 17 correlations here, about one p < 0.05 is expected by chance.
+
+   | Descriptor | ρ | p |
+   |---|---|---|
+   | Prediction spread (28 runs) | +0.350 | 0.200 |
+   | ΔSSE, testing_20251124:007 | +0.379 | 0.167 |
+   | ΔSSE, other identities | +0.514 | 0.052 |
+   | Largest client's share | +0.442 | 0.100 |
+   | CV of client run counts | +0.332 | 0.227 |
+   | Mean identity share on the largest client | +0.329 | 0.232 |
+   | testing_20251124:007 share on the largest client | −0.402 | 0.138 |
+   | testing_20251124:007 clients holding it | +0.190 | 0.510 |
+   | Share on the largest client: test_2:001 | +0.519 | 0.050 |
+   | … test_2:002 | +0.572 | 0.028 |
+   | … test_2:003 | +0.011 | 0.971 |
+   | … testing_20251124:003 | −0.333 | 0.223 |
+   | … testing_20251124:004 | +0.161 | 0.564 |
+   | … testing_20251124:005 | −0.051 | 0.858 |
+   | … testing_20251124:007 | −0.402 | 0.138 |
+   | … testing_20251124:008 | +0.423 | 0.117 |
+
+6. **Post hoc / exploratory:** isolated identities vs RMSE, ρ = +0.080, p = 0.776. The
+   step-1 suggestion (isolation of a non-largest-client identity) finds no support.
+7. **Initialization controls** (draw 1, init 4601 → 4602; not in the confirmatory set):
+
+   | α | Spread, 28 runs | Spread, saved window | RMSE | Skill |
+   |---|---|---|---|---|
+   | 0.1 | 0.175 → 0.738 | 0.197 → 0.892 | 0.0389 → 0.0383 | +0.079 → +0.106 |
+   | 0.3 | 1.004 → 0.765 | 1.772 → 1.091 | 0.0451 → 0.0379 | −0.240 → +0.125 |
+
+   On the same partition, changing only the init seed moves α = 0.3 from the worst draw-1
+   result to better than α = 0.1. The α = 0.1 model's spread grows fourfold. Both spread
+   and RMSE at draw 1 are set by the training trajectory as much as by the partition.
+
+### Sensitivity check — NOT PRE-REGISTERED: collapsed run excluded (n = 14)
+
+Items 1–4 recomputed without α = 0.1 draw 2. Only α = 0.1's summary changes; it now
+rests on 2 draws.
+
+| | Pre-registered (n = 15) | Without the collapsed run (n = 14) |
+|---|---|---|
+| ρ(α, RMSE) | −0.153, p = 0.596 | −0.101, p = 0.728 |
+| ρ(α, skill) | +0.153, p = 0.596 | +0.101, p = 0.728 |
+| ρ(spread, RMSE) | +0.350, p = 0.200 | +0.499, p = 0.072 |
+| ρ(α, spread) | −0.011, p = 0.984 | −0.103, p = 0.724 |
+| Support rule | met | met |
+| Between-α / within-α spread | 0.00131 / 0.00322 | 0.00145 / 0.00311 |
+| Variance rule | draw dominates | draw dominates |
+| α = 0.1 RMSE / skill | 0.0389 ± 0.0018 / +0.077 ± 0.085 (n = 3) | 0.0380 ± 0.0012 / +0.120 ± 0.058 (n = 2) |
+
+Every conclusion is the same either way.
+
+### Did α change the partitions? — descriptive, NOT PRE-REGISTERED
+
+This is a manipulation check, added after the results were seen: does α move the
+partition-concentration descriptors, even though RMSE does not follow? It uses Spearman
+ρ(α, descriptor) over the 15 confirmatory partitions, with average ranks and the same
+permutation p (100,000 shuffles, seed 4601). The partitions do not depend on training, so
+the collapsed run's partition counts like any other.
+
+- **Identities per client** is the mean over the 3 clients of the number of identities with
+  at least 1 training run on that client. It is computed from `identity_client_runs` in
+  `derived/alpha_sweep_runs.csv`. It equals 8/3 × the mean number of clients per identity,
+  so the two have the same ranks.
+
+| Descriptor | ρ(α, ·) | p |
+|---|---|---|
+| Identities per client | **+0.983** | 1.0e-5 (no shuffle reached it) |
+| Largest client's share of the 112 runs | −0.432 | 0.110 |
+| Mean identity share on the largest client | −0.415 | 0.129 |
+| CV of client run counts, for reference | −0.338 | 0.222 |
+
+Per draw (draws 1 / 2 / 3):
+
+| α | Identities on client_0/1/2 | Identities per client | Largest client's share | Mean identity share on largest |
+|---|---|---|---|---|
+| 0.05 | 3/3/3, 3/5/3, 4/3/2 | 3.00, 3.67, 3.00 | 0.348, 0.491, 0.464 | 0.302, 0.466, 0.423 |
+| 0.1 | 3/2/6, 3/2/7, 2/4/5 | 3.67, 4.00, 3.67 | 0.670, 0.723, 0.455 | 0.628, 0.697, 0.485 |
+| 0.3 | 3/5/7, 3/5/7, 6/5/4 | 5.00, 5.00, 5.00 | 0.652, 0.339, 0.375 | 0.622, 0.371, 0.389 |
+| 1 | 7/7/7, 8/8/7, 8/8/7 | 7.00, 7.67, 7.67 | 0.348, 0.438, 0.411 | 0.314, 0.414, 0.403 |
+| 10 | 8/8/8, 8/8/8, 8/8/8 | 8.00, 8.00, 8.00 | 0.357, 0.366, 0.375 | 0.351, 0.377, 0.384 |
+
+- **α changed identity mixing as intended, and almost perfectly monotonically.** At α ≤ 0.1
+  each client holds 2–7 of the 8 identities, and most identities sit on one client. At
+  α = 10 every client holds all 8.
+- **Volume concentration did not follow α.** At low α each identity goes almost entirely to
+  one client, but which client is random. The client totals can therefore come out
+  balanced: α = 0.05 draw 1 is 37/36/39, with largest share 0.348, the same as α = 1
+  draw 1. The largest-share descriptors depend on how the whole identities happen to stack,
+  not on α.
+- **So the null RMSE result is not a failed manipulation.** α did change which identities
+  each client sees. Across the α range, the RMSE of the trained model did not track that
+  change.
+
+### Answer to the advisor's question
+
+- **No trend in α** (primary ρ = −0.153, p = 0.60; −0.101, p = 0.73 without the collapsed
+  run). α did reshape the partitions as intended: identities per client rises with α,
+  ρ = +0.983. So the absence of a trend is not a failed manipulation.
+- **The draw-1 gap between α = 0.1 (RMSE 0.0389) and α = 0.3 (0.0451) is not an α
+  effect.** Within-α scatter across partition draws is 2.5× the between-α scatter. α = 0.3
+  gives both the worst draw-1 run and the best run of the sweep (draw 3, 0.0344). The same
+  α = 0.3 draw-1 partition with init seed 4602 gives 0.0379.
+- **Per-α means of trained-model RMSE lie between 0.0380 and 0.0417.** Four of five are
+  below the lookup's 0.0405; α = 0.05 is above it. Per-run intervals are wide: every skill
+  interval in the sweep contains 0.
+- **The hypothesis from step 1** ("RMSE depends on how far the model deviates from the
+  lookup, not α") meets its pre-registered support rule. The spread correlation is
+  positive but not significant (p = 0.20; 0.07 without the collapsed run). The strongest
+  exploratory signal is the loss on identities other than testing_20251124:007 (ρ = +0.514,
+  p = 0.052), not the gain on :007.
+
+### Files
+
+- **Code:** `alpha_sweep.py`. `analyse()` computes items 1–4 through a shared
+  `_core_statistics()`. It adds `sensitivity_excluding_collapsed`, which is
+  `pre_registered: false`, names the excluded runs, and holds the same items on the
+  non-collapsed confirmatory runs. Every pre-registered key and value is unchanged.
+- **Workbook:** the stats sheet gets a block labelled "SENSITIVITY, NOT PRE-REGISTERED",
+  directly under the pre-registered rows. The notes sheet says the block was added after
+  the results were seen.
+- **Test:** `test_alpha_sweep.py` adds
+  `test_collapsed_runs_stay_in_the_primary_and_leave_only_the_sensitivity_check`.
+- **Outputs (untracked):**
+  - `artifacts/alpha_sweep/` holds the 13 jobs, `results_index.csv`, and
+    `derived/alpha_sweep_runs.csv` and `alpha_sweep_analysis.json`, rebuilt with
+    `--derived-only`;
+  - `excel/alpha_sweep.xlsx` is built by `scripts/make_alpha_sweep_excel.py`.
+
+  Nothing was written under `artifacts/relabel` or S5.
+
+---
+
 ## Alpha sweep — design and pre-registered analysis (2026-11-18)
 
 Branch `alpha-sweep`, cut from `main` (`19feaf2`). The advisor asked why FL Dirichlet

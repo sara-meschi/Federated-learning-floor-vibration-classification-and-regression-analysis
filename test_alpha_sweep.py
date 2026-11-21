@@ -8,6 +8,7 @@ The data tests read gitignored results and skip where they are absent.
 
 from __future__ import annotations
 
+import json
 import math
 import re
 import zipfile
@@ -203,6 +204,53 @@ def test_pre_registered_rules() -> None:
     partial = sweep.analyse(_rows(rmse, spread)[:2])
     assert partial["complete"] is False and partial["spread_rule_supported"] is None
     assert partial["variance_rule"]["draw_dominates"] is None
+
+
+def test_collapsed_runs_stay_in_the_primary_and_leave_only_the_sensitivity_check() -> None:
+    alphas = (0.05, 0.1, 0.3, 1.0, 10.0)
+    spread = {a: [0.2, 1.0, 0.5] for a in alphas}
+    rmse = {a: [0.035 + 0.001 * i + 0.0001 * d for d in range(3)] for i, a in enumerate(alphas)}
+    rows = _rows(rmse, spread)
+    for r in rows:
+        r["outcome"] = "trained"
+    collapsed = next(r for r in rows if r["alpha"] == 0.1 and r["draw"] == 2)
+    collapsed.update(outcome="collapsed", rmse=0.0407, spread_runs=0.0)
+    analysis = sweep.analyse(rows)
+    assert analysis["primary_alpha_vs_rmse"]["n"] == 15
+    assert [s["n"] for s in analysis["per_alpha"]] == [3, 3, 3, 3, 3]
+    sens = analysis["sensitivity_excluding_collapsed"]
+    assert sens["pre_registered"] is False and sens["excluded"] == ["alpha=0.1 draw 2"] and sens["n"] == 14
+    assert sens["primary_alpha_vs_rmse"]["n"] == 14
+    assert [s["n"] for s in sens["per_alpha"]] == [3, 2, 3, 3, 3]
+    kept = [r for r in rows if r is not collapsed]
+    assert sens["primary_alpha_vs_rmse"]["rho"] == pytest.approx(sweep.spearman(
+        [r["alpha"] for r in kept], [r["rmse"] for r in kept]))
+    assert sens["variance_rule"]["draw_dominates"] is not None
+
+
+def _assert_same(a: object, b: object, path: str = "") -> None:
+    if isinstance(a, dict):
+        assert isinstance(b, dict) and set(a) == set(b), path
+        for key in a:
+            _assert_same(a[key], b[key], f"{path}.{key}")
+    elif isinstance(a, list):
+        assert isinstance(b, list) and len(a) == len(b), path
+        for i, (x, y) in enumerate(zip(a, b)):
+            _assert_same(x, y, f"{path}[{i}]")
+    elif isinstance(a, float) and isinstance(b, float):
+        assert a == pytest.approx(b, rel=1e-12, abs=1e-15), path
+    else:
+        assert a == b, path
+
+
+@pytest.mark.skipif(not (sweep.DEFAULT_RESULTS_ROOT / "derived/alpha_sweep_runs.csv").exists(),
+                    reason="alpha-sweep derived tables not present")
+def test_load_derived_reads_back_what_write_derived_saved() -> None:
+    """The workbooks read derived/ only: the typed-back rows give the saved analysis again."""
+    rows, analysis = sweep.load_derived()
+    assert len(rows) == 17 and all(isinstance(r["draw"], int) and isinstance(r["alpha"], float) for r in rows)
+    assert {type(r["reused_from_relabel"]) for r in rows} == {bool}
+    _assert_same(json.loads(json.dumps(sweep.analyse(rows))), analysis)
 
 
 @needs_relabel_runs

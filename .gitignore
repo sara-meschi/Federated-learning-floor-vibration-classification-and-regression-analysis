@@ -23,3 +23,5 @@ artifacts/relabel/*
 !artifacts/relabel/checks/
 !artifacts/relabel/rescore/
 !artifacts/relabel/data/
+.DS_Store
+.DS_Store

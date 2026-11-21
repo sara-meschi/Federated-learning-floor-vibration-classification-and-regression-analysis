@@ -365,17 +365,14 @@ def per_alpha_summary(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]
     return out
 
 
-def analyse(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
-    """Every pre-registered quantity, computed on whatever is measured. Conclusions are
-    marked final only when all 15 confirmatory runs are measured."""
-    confirmatory = [r for r in rows if r["role"] == "confirmatory" and "rmse" in r]
-    complete = len(confirmatory) == len(ALPHAS) * len(PARTITION_SEEDS)
+def _core_statistics(confirmatory: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Items 1-4 of the pre-registered analysis on the given confirmatory runs."""
     primary = _correlation(confirmatory, "alpha", "rmse")
     spread = _correlation(confirmatory, "spread_runs", "rmse")
     support = None
     if primary["rho"] is not None and spread["rho"] is not None:
         support = bool(abs(spread["rho"]) > abs(primary["rho"]) and primary["p"] >= SIGNIFICANCE)
-    summary = per_alpha_summary(rows)
+    summary = per_alpha_summary(confirmatory)
     means = [s["rmse_mean"] for s in summary if s["rmse_mean"] is not None]
     stds = [s["rmse_std"] for s in summary if s["rmse_std"] is not None]
     variance_rule: dict[str, Any] = {"between_alpha_std_of_means": None, "within_alpha_mean_of_stds": None,
@@ -384,6 +381,29 @@ def analyse(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         between, within = float(np.std(means, ddof=1)), float(np.mean(stds))
         variance_rule = {"between_alpha_std_of_means": between, "within_alpha_mean_of_stds": within,
                          "draw_dominates": bool(within >= between)}
+    return {"per_alpha": summary, "primary_alpha_vs_rmse": primary,
+            "alpha_vs_skill": _correlation(confirmatory, "alpha", "skill"),
+            "alpha_vs_spread": _correlation(confirmatory, "alpha", "spread_runs"),
+            "spread_vs_rmse": spread, "spread_rule_supported": support, "variance_rule": variance_rule}
+
+
+def analyse(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Every pre-registered quantity, computed on whatever is measured. Conclusions are
+    marked final only when all 15 confirmatory runs are measured.
+
+    ``sensitivity_excluding_collapsed`` is NOT pre-registered: items 1-4 recomputed without
+    the confirmatory runs whose gate outcome is collapsed, reported next to the primary
+    result. The pre-registered statistics keep every measured run."""
+    confirmatory = [r for r in rows if r["role"] == "confirmatory" and "rmse" in r]
+    complete = len(confirmatory) == len(ALPHAS) * len(PARTITION_SEEDS)
+    core = _core_statistics(confirmatory)
+    collapsed = [r for r in confirmatory if r.get("outcome") == "collapsed"]
+    kept = [r for r in confirmatory if r.get("outcome") != "collapsed"]
+    sensitivity = {
+        "pre_registered": False,
+        "label": "NOT PRE-REGISTERED sensitivity check: items 1-4 without the collapsed confirmatory runs",
+        "excluded": [f"alpha={r['alpha']:g} draw {r['draw']}" for r in collapsed],
+        "n": len(kept), **_core_statistics(kept)}
     controls = []
     for control in (r for r in rows if r["role"] == "init_control"):
         partner = next((r for r in confirmatory if r["alpha"] == control["alpha"] and r["draw"] == control["draw"]), None)
@@ -397,13 +417,8 @@ def analyse(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         "confirmatory_runs_measured": len(confirmatory),
         "confirmatory_runs_planned": len(ALPHAS) * len(PARTITION_SEEDS),
         "permutations": PERMUTATIONS, "permutation_seed": PERMUTATION_SEED, "significance": SIGNIFICANCE,
-        "per_alpha": summary,
-        "primary_alpha_vs_rmse": primary,
-        "alpha_vs_skill": _correlation(confirmatory, "alpha", "skill"),
-        "alpha_vs_spread": _correlation(confirmatory, "alpha", "spread_runs"),
-        "spread_vs_rmse": spread,
-        "spread_rule_supported": support,
-        "variance_rule": variance_rule,
+        **core,
+        "sensitivity_excluding_collapsed": sensitivity,
         "descriptors_vs_rmse": {
             column: {"label": label, "kind": kind, **_correlation(confirmatory, column, "rmse")}
             for column, label, kind in DESCRIPTORS},
@@ -446,16 +461,71 @@ def write_derived(root: Path, relabel_root: Path = RELABEL_ROOT) -> dict[str, An
     return analysis
 
 
+#: Text columns of ``derived/alpha_sweep_runs.csv``; INT_COLUMNS are integers, every other
+#: non-empty cell is a float. Empty cells are left out, as in ``run_row``.
+TEXT_COLUMNS = {"role", "status", "outcome", "client_runs", "largest_client", "focus_clients",
+                "posthoc_isolated_list", "identity_client_runs", "predictions_file", "partition_file"}
+INT_COLUMNS = {"draw", "partition_seed", "init_seed", "focus_num_clients", "posthoc_isolated_identities"}
+
+
+def load_derived(root: Path = DEFAULT_RESULTS_ROOT) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """The rows and the analysis exactly as ``write_derived`` saved them, typed back."""
+    rows = []
+    for raw in _read_csv(Path(root) / "derived/alpha_sweep_runs.csv"):
+        row: dict[str, Any] = {}
+        for key, value in raw.items():
+            if value == "":
+                continue
+            if key in TEXT_COLUMNS:
+                row[key] = value
+            elif key == "reused_from_relabel":
+                row[key] = {"True": True, "False": False}[value]
+            elif key in INT_COLUMNS:
+                row[key] = int(value)
+            else:
+                row[key] = float(value)
+        rows.append(row)
+    analysis = json.loads((Path(root) / "derived/alpha_sweep_analysis.json").read_text())
+    return rows, analysis
+
+
 # --------------------------------------------------------------------------------------
 # workbook
 # --------------------------------------------------------------------------------------
 
 
-def build_workbook(rows: Sequence[Mapping[str, Any]], analysis: Mapping[str, Any], commit: str):
-    """``excel/alpha_sweep.xlsx``: the excel/ conventions (data / chart / stats / notes)."""
+DERIVED_FILES = ("artifacts/alpha_sweep/derived/alpha_sweep_runs.csv",
+                 "artifacts/alpha_sweep/derived/alpha_sweep_analysis.json")
+
+
+def centralized_reference(artifacts_root: Path) -> list[dict[str, Any]]:
+    """The centralized residual regression model at its three init seeds, read from the
+    relabel / S5 results exactly as Fig 2 reads it: the reference lines of the workbook."""
+    from .excel_figures import load_relabel_results, regression_points
+
+    points = sorted((p for p in regression_points(load_relabel_results(artifacts_root))
+                     if p["family"] == "centralized"), key=lambda p: int(p["seed"]))
+    if [int(p["seed"]) for p in points] != [4601, 4602, 4603]:
+        raise AssertionError(f"expected the centralized model at seeds 4601-4603, got {[p['seed'] for p in points]}")
+    return [{"seed": int(p["seed"]), "rmse": p["rmse"], "skill": p["skill"], "outcome": p["outcome"],
+             "source_file": p["predictions_file"]} for p in points]
+
+
+def build_workbook(rows: Sequence[Mapping[str, Any]], analysis: Mapping[str, Any], commit: str,
+                   centralized: Sequence[Mapping[str, Any]] | None = None):
+    """``excel/alpha_sweep.xlsx``: the excel/ conventions (data / chart / stats / notes).
+
+    Rows are ordered confirmatory first; within them, runs that did not train or collapsed
+    come last so each draw's trained runs and each non-trained outcome form one block (one
+    chart series each). That is display only: the per-α formulas, the rank formulas and
+    the stats sheet cover every confirmatory row, the collapsed run included."""
+    from openpyxl.chart.marker import DataPoint
+
     from . import excel_figures as ef
 
-    measured = [dict(r) for r in rows if "rmse" in r]
+    roles = {"confirmatory": 0, "init_control": 1}
+    measured = sorted((dict(r) for r in rows if "rmse" in r),
+                      key=lambda r: (roles[r["role"]], r["outcome"] != "trained", r["outcome"], r["draw"], r["alpha"]))
     identities = sorted({k.split(":", 1)[1] for r in measured for k in r if k.startswith("share_on_largest:")})
     wb = ef._new_workbook()
     data_rows = []
@@ -511,23 +581,47 @@ def build_workbook(rows: Sequence[Mapping[str, Any]], analysis: Mapping[str, Any
                                          f'/({cell["summary_n"]}-1)),0)')
         summary.append(row)
     ef.write_table(wb["data"], summary, s_columns, first_col=s_table.first_col)
-    # reference lines: lookup and zero across the alpha axis
+    # reference lines across the alpha axis: lookup, zero, and the centralized residual
+    # model (mean, min and max over its 3 init seeds, formulas over the block below them)
     ref_first = s_table.first_col
     ref_top = len(present) + 4
     ws = wb["data"]
-    for j, key in enumerate(("line_alpha", "lookup_rmse_line", "zero_line")):
+    line_values: dict[str, Any] = {"lookup_rmse_line": f"=AVERAGE({rng['lookup_rmse']})", "zero_line": 0.0}
+    if centralized:
+        c_table = ef.write_table(
+            ws, [{"centralized_seed": c["seed"], "centralized_rmse": c["rmse"], "centralized_skill": c["skill"],
+                  "centralized_outcome": c["outcome"], "centralized_source_file": c["source_file"]}
+                 for c in centralized],
+            ["centralized_seed", "centralized_rmse", "centralized_skill", "centralized_outcome",
+             "centralized_source_file"], header_row=ref_top + 4, first_col=ref_first)
+        for metric in ("rmse", "skill"):
+            for stat, function in (("mean", "AVERAGE"), ("min", "MIN"), ("max", "MAX")):
+                line_values[f"centralized_{metric}_{stat}"] = f"={function}({c_table.ref(f'centralized_{metric}')})"
+    line_keys = ["line_alpha", *line_values]
+    for j, key in enumerate(line_keys):
         ws.cell(row=ref_top, column=ref_first + j, value=key).font = ef._font(bold=True)
     for k, x in enumerate((0.01, 100.0)):
         r = ref_top + 1 + k
         ws.cell(row=r, column=ref_first, value=x).font = ef._font()
-        ws.cell(row=r, column=ref_first + 1, value=f"=AVERAGE({rng['lookup_rmse']})").font = ef._font()
-        ws.cell(row=r, column=ref_first + 2, value=0.0).font = ef._font()
+        for j, key in enumerate(line_values, start=1):
+            ws.cell(row=r, column=ref_first + j, value=line_values[key]).font = ef._font()
     sheet = ef.quote_sheetname(ws.title)
     lines_x = f"{sheet}!${ef.get_column_letter(ref_first)}${ref_top + 1}:${ef.get_column_letter(ref_first)}${ref_top + 2}"
 
-    def line_ref(offset: int) -> str:
-        col = ef.get_column_letter(ref_first + offset)
+    def line_ref(key: str) -> str:
+        col = ef.get_column_letter(ref_first + line_keys.index(key))
         return f"{sheet}!${col}${ref_top + 1}:${col}${ref_top + 2}"
+
+    def block(**match: Any) -> tuple[int, int] | None:
+        """The contiguous data rows matching ``match``, or None when there are none."""
+        if not any(all(r.get(k) == v for k, v in match.items()) for r in data_rows):
+            return None
+        return table.rows_where(data_rows, **match)
+
+    def collapsed_points(stop: int) -> list[Any]:
+        """Per-point × markers for the non-trained rows among data rows 0 .. stop - 1."""
+        return [DataPoint(idx=i, marker=ef._marker(ef.OUTCOME_SYMBOL[r["outcome"]], ef.COLLAPSED_COLOR, False, 9))
+                for i, r in enumerate(data_rows[:stop]) if r["outcome"] in ef.OUTCOME_SYMBOL]
 
     charts = ef._sheet(wb, "chart")
     placed = 0
@@ -538,33 +632,56 @@ def build_workbook(rows: Sequence[Mapping[str, Any]], analysis: Mapping[str, Any
         charts.add_chart(chart, f"{'A' if placed % 2 == 0 else 'K'}{1 + 21 * (placed // 2)}")
         placed += 1
 
-    for metric, y_title, column, err_plus, err_minus, line_offset, line_name in (
-            ("RMSE", "RMSE (m/s), matched bootstrap 95% CI", "value", "err_plus", "err_minus", 1, "lookup (0.0405 m/s)"),
-            ("Skill", "Skill vs lookup, bootstrap 95% CI", "skill", "skill_err_plus", "skill_err_minus", 2, "zero")):
+    for metric, y_title, column, err_plus, err_minus, line_key, line_name in (
+            ("RMSE", "RMSE (m/s), matched bootstrap 95% CI", "value", "err_plus", "err_minus", "lookup_rmse_line",
+             "lookup (0.0405 m/s)"),
+            ("Skill", "Skill vs lookup, bootstrap 95% CI", "skill", "skill_err_plus", "skill_err_minus", "zero_line",
+             "zero")):
         chart = ef._scatter(f"{metric} vs Dirichlet α (FL K=3, init seed 4601)", "Dirichlet α (log scale)", y_title)
-        for d, color in zip((1, 2, 3), ef.SEED_COLORS):
-            members = [i for i, r in enumerate(data_rows) if r["role"] == "confirmatory" and r["draw"] == d]
-            if not members:
-                continue
-            a, b = members[0], members[-1] + 1
-            s = ef._markers_only(ef._series(table.ref(column, a, b), table.ref("alpha", a, b),
-                                            title=f"draw {d} (partition seed {PARTITION_SEEDS[d - 1]})"),
-                                 ef._marker(("circle", "square", "triangle")[d - 1], color, True, 7))
+
+        def points(span: tuple[int, int], title: str, marker: Any, color: str) -> None:
+            a, b = span
+            s = ef._markers_only(ef._series(table.ref(column, a, b), table.ref("alpha", a, b), title=title), marker)
             s.errBars = ef._custom_error_bars(table, a, b, direction="y", plus=err_plus, minus=err_minus, color=color)
             chart.series.append(s)
+
+        for d, color in zip((1, 2, 3), ef.SEED_COLORS):
+            if span := block(role="confirmatory", outcome="trained", draw=d):
+                points(span, f"draw {d} (partition seed {PARTITION_SEEDS[d - 1]})",
+                       ef._marker(("circle", "square", "triangle")[d - 1], color, True, 7), color)
+        for outcome in ("did not train", "collapsed"):
+            if span := block(role="confirmatory", outcome=outcome):
+                which = "; ".join(f"α={r['alpha']:g} draw {r['draw']}" for r in data_rows[span[0]:span[1]])
+                points(span, f"{outcome} ({which}), in every statistic",
+                       ef._marker(ef.OUTCOME_SYMBOL[outcome], ef.COLLAPSED_COLOR, False, 9), ef.COLLAPSED_COLOR)
+        if span := block(role="init_control"):
+            points(span, "init-seed 4602 controls (same partitions as draw 1)",
+                   ef._marker("diamond", ef.LOCAL_COLOR, False, 8), ef.LOCAL_COLOR)
         if summary:
             mean = ef._series(s_table.ref(f"summary_{metric.lower()}_mean"), s_table.ref("summary_alpha"),
-                              title="mean ± std over draws")
+                              title="mean ± std over draws (all 3, collapsed included)")
             mean.marker = ef._marker("dash", ef.INK, True, 10)
             mean.graphicalProperties = ef._line(ef.INK, 1.0, "dash")
             mean.smooth = False
             mean.errBars = ef._custom_error_bars(s_table, direction="y", plus=f"summary_{metric.lower()}_std",
                                                  minus=f"summary_{metric.lower()}_std", color=ef.INK)
             chart.series.append(mean)
-        chart.series.append(ef._line_only(ef._series(line_ref(line_offset), lines_x, title=line_name), ef.MUTED, 0.75, "dash"))
+        chart.series.append(ef._line_only(ef._series(line_ref(line_key), lines_x, title=line_name), ef.MUTED, 0.75, "dash"))
+        deleted = []
+        if centralized:
+            key = f"centralized_{metric.lower()}"
+            chart.series.append(ef._line_only(ef._series(line_ref(f"{key}_mean"), lines_x,
+                                                         title="centralized residual (mean of 3 seeds)"),
+                                              ef.CENTRAL_COLOR, 1.25, "dash"))
+            for stat in ("min", "max"):
+                chart.series.append(ef._line_only(ef._series(line_ref(f"{key}_{stat}"), lines_x,
+                                                             title="centralized min–max over 3 seeds"),
+                                                  ef.CENTRAL_COLOR, 0.75, "sysDot"))
+            deleted.append(len(chart.series) - 1)  # one legend entry for the band's two lines
         ef._style_axis(chart.x_axis, "Dirichlet α (log scale)", log=True, minimum=0.01, maximum=100, gridlines=False,
                        number_format="0.##")
         chart.x_axis.crosses = "min"
+        ef._legend(chart, deleted=deleted)
         place(chart)
 
     conf_end = n_conf
@@ -574,9 +691,12 @@ def build_workbook(rows: Sequence[Mapping[str, Any]], analysis: Mapping[str, Any
                          title: str | None = None) -> None:
         chart = ef._scatter(title or f"RMSE vs {x_title}", x_title, y_title)
         if conf_end:
-            chart.series.append(ef._markers_only(
-                ef._series(table.ref(y_column, 0, conf_end), table.ref(column, 0, conf_end), title="confirmatory runs"),
-                ef._marker("circle", ef.FL_COLOR, True, 7)))
+            s = ef._markers_only(
+                ef._series(table.ref(y_column, 0, conf_end), table.ref(column, 0, conf_end),
+                           title="confirmatory runs (× = collapsed)"),
+                ef._marker("circle", ef.FL_COLOR, True, 7))
+            s.dPt = collapsed_points(conf_end)
+            chart.series.append(s)
         if controls:
             a, b = controls[0], controls[-1] + 1
             chart.series.append(ef._markers_only(
@@ -584,13 +704,17 @@ def build_workbook(rows: Sequence[Mapping[str, Any]], analysis: Mapping[str, Any
                 ef._marker("diamond", ef.LOCAL_COLOR, False, 8)))
         place(chart)
 
-    descriptor_chart("spread_runs", "prediction spread (28 runs)")
+    descriptor_chart("spread_runs", "prediction spread (28 runs)",
+                     title="RMSE vs prediction spread, the pre-registered descriptor (15 runs + 2 controls)")
     chart = ef._scatter("Gain on testing_20251124:007 vs loss elsewhere", "Model − lookup SSE, testing_20251124:007",
                         "Model − lookup SSE, other identities")
     if conf_end:
-        chart.series.append(ef._markers_only(
-            ef._series(table.ref("dsse_other", 0, conf_end), table.ref("dsse_focus", 0, conf_end), title="confirmatory runs"),
-            ef._marker("circle", ef.FL_COLOR, True, 7)))
+        s = ef._markers_only(
+            ef._series(table.ref("dsse_other", 0, conf_end), table.ref("dsse_focus", 0, conf_end),
+                       title="confirmatory runs (× = collapsed)"),
+            ef._marker("circle", ef.FL_COLOR, True, 7))
+        s.dPt = collapsed_points(conf_end)
+        chart.series.append(s)
     place(chart)
     for column, label in (("largest_client_share", "largest client's share of training runs"),
                           ("client_run_cv", "CV of client run counts"),
@@ -612,7 +736,7 @@ def build_workbook(rows: Sequence[Mapping[str, Any]], analysis: Mapping[str, Any
     stats.column_dimensions["A"].width = 58
     for col in "BCDE":
         stats.column_dimensions[col].width = 16
-    for j, head in enumerate(("quantity", "rho / value", "p (permutation)", "n", "live formula")):
+    for j, head in enumerate(("quantity", "rho / value / mean", "p (permutation) / std", "n", "live formula")):
         stats.cell(row=1, column=1 + j, value=head).font = ef._font(bold=True)
     line = 2
 
@@ -655,6 +779,27 @@ def build_workbook(rows: Sequence[Mapping[str, Any]], analysis: Mapping[str, Any
     put("within-α spread: mean of the five per-α RMSE stds", rule["within_alpha_mean_of_stds"],
         formula=f"=AVERAGE({stds_ref})" if summary and len(summary) == len(ALPHAS) else None)
     put("variance rule: within ≥ between → dominated by the draw, not α", rule["draw_dominates"])
+    for s in analysis["per_alpha"]:
+        put(f"per α, every confirmatory run: α={s['alpha']:g} RMSE mean / std (n = {s['n']})", s["rmse_mean"],
+            s["rmse_std"])
+        put(f"per α, every confirmatory run: α={s['alpha']:g} skill mean / std (n = {s['n']})", s["skill_mean"],
+            s["skill_std"])
+    line += 1
+    sens = analysis["sensitivity_excluding_collapsed"]
+    excluded = ", ".join(sens["excluded"]) or "none"
+    put(f"SENSITIVITY, NOT PRE-REGISTERED: collapsed runs excluded ({excluded}); the rows above keep them")
+    put("  confirmatory runs used", sens["n"])
+    corr("  Spearman ρ(α, RMSE)", sens["primary_alpha_vs_rmse"])
+    corr("  Spearman ρ(α, skill)", sens["alpha_vs_skill"])
+    corr("  Spearman ρ(spread, RMSE)", sens["spread_vs_rmse"])
+    corr("  Spearman ρ(α, spread)", sens["alpha_vs_spread"])
+    put("  support rule", sens["spread_rule_supported"])
+    put("  between-α spread", sens["variance_rule"]["between_alpha_std_of_means"])
+    put("  within-α spread", sens["variance_rule"]["within_alpha_mean_of_stds"])
+    put("  variance rule: within ≥ between", sens["variance_rule"]["draw_dominates"])
+    for s in sens["per_alpha"]:
+        put(f"  α={s['alpha']:g}: RMSE mean / std (n = {s['n']})", s["rmse_mean"], s["rmse_std"])
+        put(f"  α={s['alpha']:g}: skill mean / std (n = {s['n']})", s["skill_mean"], s["skill_std"])
     line += 1
     put("Exploratory descriptors vs RMSE (not confirmatory)")
     for column, entry in analysis["descriptors_vs_rmse"].items():
@@ -678,7 +823,10 @@ def build_workbook(rows: Sequence[Mapping[str, Any]], analysis: Mapping[str, Any
         "per α (partition seeds 4601 / 5601 / 6601; draw 1 is the relabel partition), init seed 4601, plus "
         "two initialization controls (α = 0.1 and 0.3, draw 1, init seed 4602) that are not in the "
         "confirmatory set. Per-run descriptors and the pre-registered statistics are on the data and stats "
-        "sheets.",
+        "sheets. Reference lines: the lookup (0.0405 m/s; skill 0) and the centralized residual model, its "
+        "mean over init seeds 4601 / 4602 / 4603 with the min–max over those seeds as two dotted lines (an "
+        "Excel scatter chart cannot shade a band). Read from artifacts/alpha_sweep/derived/ and, for the "
+        "centralized lines only, the relabel / S5 results.",
         ef._columns_doc(table.columns, {
             "role": "confirmatory (the 15-run set) or init_control (init seed 4602; never in the statistics).",
             "alpha": "Dirichlet concentration α.",
@@ -716,12 +864,18 @@ def build_workbook(rows: Sequence[Mapping[str, Any]], analysis: Mapping[str, Any
             "rank_alpha / rank_rmse / rank_spread": "Formulas: average ranks among the confirmatory rows, for the "
                                                     "live Spearman (CORREL of ranks) on the stats sheet.",
             "reused_from_relabel": "yes for α = 0.1 and 0.3 draw 1 init 4601: read from artifacts/relabel.",
-            "predictions_file": "The run's saved test-run predictions.",
-            "partition_file": "The run's run → client assignment.",
-            "summary_* (block right of the table)": "Per α over the confirmatory rows: COUNTIFS, AVERAGEIFS and "
-                                                    "sample std via SUMPRODUCT.",
+            "predictions_file": "Provenance: the run's saved test-run predictions, from which derived/ was "
+                                "computed. This workbook reads derived/ only.",
+            "partition_file": "Provenance: the run's run → client assignment.",
+            "summary_* (block right of the table)": "Per α over every confirmatory row, the collapsed run "
+                                                    "included: COUNTIFS, AVERAGEIFS and sample std via SUMPRODUCT.",
+            "line_alpha and *_line / centralized_*_mean|min|max": "Reference lines (2 points at α = 0.01 and "
+                                                                  "100): formulas over the lookup column and the "
+                                                                  "centralized block.",
+            "centralized_* (block under the lines)": "The centralized residual regression model per init seed: "
+                                                      "RMSE, skill, outcome and its predictions file.",
         }),
-        [r["predictions_file"] for r in measured] + [r["partition_file"] for r in measured],
+        [*DERIVED_FILES, *(c["source_file"] for c in centralized or ())],
         extra=[
             "PRE-REGISTERED (CHANGES.md, before any job ran). Primary: Spearman ρ(α, RMSE) over the 15 "
             "confirmatory runs, two-sided Monte Carlo permutation p-value "
@@ -736,6 +890,14 @@ def build_workbook(rows: Sequence[Mapping[str, Any]], analysis: Mapping[str, Any
             "test.",
             "All measured confirmatory runs enter every statistic; collapsed / did-not-train runs are labelled, "
             "not excluded.",
+            "Display only: in the α charts a collapsed run is drawn as its own × series instead of in its draw's "
+            "series, and its row is sorted after the trained rows of the confirmatory block. The per-α mean ± std "
+            "formulas, the rank formulas and the stats sheet still include it.",
+            "The init-seed 4602 controls use the draw-1 partitions of α = 0.1 and 0.3 and sit at the same α as "
+            "their draw-1 partners: the vertical gap is the effect of the training seed alone.",
+            "NOT PRE-REGISTERED: the stats sheet's sensitivity block repeats the primary test, the support rule, "
+            "the variance rule and the per-α summary without the collapsed confirmatory runs. It was added after "
+            "the results were seen and is reported next to, never instead of, the pre-registered result.",
             "Not measured at build time: " + ("; ".join(missing) if missing else "none") + ".",
         ],
         metrics=("skill", "lookup RMSE", "bootstrap 95% interval", "outcome"),
@@ -745,14 +907,16 @@ def build_workbook(rows: Sequence[Mapping[str, Any]], analysis: Mapping[str, Any
 
 
 def make_workbook(artifacts_root: Path, out_path: Path, repo: Path) -> Path:
+    """Reads ``alpha_sweep/derived/`` (rows and analysis as saved) and, for the centralized
+    reference lines, the relabel / S5 results."""
     from .excel_figures import git_commit
 
     artifacts_root = Path(artifacts_root).resolve()
     out_path = Path(out_path).resolve()
     if artifacts_root in out_path.parents:
         raise ValueError(f"Refusing to write under the results folder: {out_path}")
-    rows = [run_row(run) for run in sweep_runs(artifacts_root / "alpha_sweep", artifacts_root / "relabel")]
-    wb = build_workbook(rows, analyse(rows), git_commit(Path(repo)))
+    rows, analysis = load_derived(artifacts_root / "alpha_sweep")
+    wb = build_workbook(rows, analysis, git_commit(Path(repo)), centralized_reference(artifacts_root))
     out_path.parent.mkdir(parents=True, exist_ok=True)
     wb.save(out_path)
     return out_path

@@ -1,8 +1,10 @@
 """Build the alpha-sweep workbook (RMSE / skill vs alpha, descriptors, statistics); nothing trains.
 
 Writes ``--out`` (default ``excel/alpha_sweep.xlsx``) from ``--results-dir`` (default
-``artifacts/``: the sweep under ``alpha_sweep/``, draw 1 of alpha = 0.1 and 0.3 under
-``relabel/``) and never writes under it. Runs not yet measured are listed in the notes."""
+``artifacts/``: the sweep's ``alpha_sweep/derived/`` tables, and the centralized residual
+model from the relabel / S5 results for the reference lines) and never writes under it.
+Rebuild ``derived/`` first with ``scripts/run_alpha_sweep.py --derived-only``. Runs not
+yet measured are listed in the notes."""
 
 from __future__ import annotations
 

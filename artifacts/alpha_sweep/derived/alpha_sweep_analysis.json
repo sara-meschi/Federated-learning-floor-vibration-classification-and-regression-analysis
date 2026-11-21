@@ -1,0 +1,291 @@
+{
+  "complete": true,
+  "confirmatory_runs_measured": 15,
+  "confirmatory_runs_planned": 15,
+  "permutations": 100000,
+  "permutation_seed": 4601,
+  "significance": 0.05,
+  "per_alpha": [
+    {
+      "alpha": 0.05,
+      "n": 3,
+      "rmse_mean": 0.041734276588251906,
+      "rmse_std": 0.0049998541193671505,
+      "skill_mean": -0.07075311898014432,
+      "skill_std": 0.26067971484077723
+    },
+    {
+      "alpha": 0.1,
+      "n": 3,
+      "rmse_mean": 0.038900408642215854,
+      "rmse_std": 0.001786389479398514,
+      "skill_mean": 0.07724521422313757,
+      "skill_std": 0.08466544119164147
+    },
+    {
+      "alpha": 0.3,
+      "n": 3,
+      "rmse_mean": 0.03883802536010911,
+      "rmse_std": 0.0055882363470647215,
+      "skill_mean": 0.06881646510666577,
+      "skill_std": 0.27284436220105474
+    },
+    {
+      "alpha": 1.0,
+      "n": 3,
+      "rmse_mean": 0.03863635767139718,
+      "rmse_std": 0.0003732786120014464,
+      "skill_mean": 0.09095116258092055,
+      "skill_std": 0.017572783742943413
+    },
+    {
+      "alpha": 10.0,
+      "n": 3,
+      "rmse_mean": 0.03886870964915288,
+      "rmse_std": 0.0033430190679818814,
+      "skill_mean": 0.07550497769800617,
+      "skill_std": 0.15718097189491617
+    }
+  ],
+  "primary_alpha_vs_rmse": {
+    "n": 15,
+    "rho": -0.15275252316519466,
+    "p": 0.5959640403595964
+  },
+  "alpha_vs_skill": {
+    "n": 15,
+    "rho": 0.15275252316519466,
+    "p": 0.5959640403595964
+  },
+  "alpha_vs_spread": {
+    "n": 15,
+    "rho": -0.01091089451179962,
+    "p": 0.984280157198428
+  },
+  "spread_vs_rmse": {
+    "n": 15,
+    "rho": 0.35,
+    "p": 0.1999480005199948
+  },
+  "spread_rule_supported": true,
+  "variance_rule": {
+    "between_alpha_std_of_means": 0.0013114471481730104,
+    "within_alpha_mean_of_stds": 0.0032181555251627426,
+    "draw_dominates": true
+  },
+  "sensitivity_excluding_collapsed": {
+    "pre_registered": false,
+    "label": "NOT PRE-REGISTERED sensitivity check: items 1-4 without the collapsed confirmatory runs",
+    "excluded": [
+      "alpha=0.1 draw 2"
+    ],
+    "n": 14,
+    "per_alpha": [
+      {
+        "alpha": 0.05,
+        "n": 3,
+        "rmse_mean": 0.041734276588251906,
+        "rmse_std": 0.0049998541193671505,
+        "skill_mean": -0.07075311898014432,
+        "skill_std": 0.26067971484077723
+      },
+      {
+        "alpha": 0.1,
+        "n": 2,
+        "rmse_mean": 0.03800306462809678,
+        "rmse_std": 0.0012453983564142948,
+        "skill_mean": 0.12009007489680995,
+        "skill_std": 0.057640101903728584
+      },
+      {
+        "alpha": 0.3,
+        "n": 3,
+        "rmse_mean": 0.03883802536010911,
+        "rmse_std": 0.0055882363470647215,
+        "skill_mean": 0.06881646510666577,
+        "skill_std": 0.27284436220105474
+      },
+      {
+        "alpha": 1.0,
+        "n": 3,
+        "rmse_mean": 0.03863635767139718,
+        "rmse_std": 0.0003732786120014464,
+        "skill_mean": 0.09095116258092055,
+        "skill_std": 0.017572783742943413
+      },
+      {
+        "alpha": 10.0,
+        "n": 3,
+        "rmse_mean": 0.03886870964915288,
+        "rmse_std": 0.0033430190679818814,
+        "skill_mean": 0.07550497769800617,
+        "skill_std": 0.15718097189491617
+      }
+    ],
+    "primary_alpha_vs_rmse": {
+      "n": 14,
+      "rho": -0.10080214186666583,
+      "p": 0.7279127208727912
+    },
+    "alpha_vs_skill": {
+      "n": 14,
+      "rho": 0.10080214186666583,
+      "p": 0.7279127208727912
+    },
+    "alpha_vs_spread": {
+      "n": 14,
+      "rho": -0.10304218946370285,
+      "p": 0.7237927620723793
+    },
+    "spread_vs_rmse": {
+      "n": 14,
+      "rho": 0.49890109890109896,
+      "p": 0.07159928400715992
+    },
+    "spread_rule_supported": true,
+    "variance_rule": {
+      "between_alpha_std_of_means": 0.0014502060025215911,
+      "within_alpha_mean_of_stds": 0.003109957300565899,
+      "draw_dominates": true
+    }
+  },
+  "descriptors_vs_rmse": {
+    "spread_runs": {
+      "label": "Prediction spread (28 runs)",
+      "kind": "model",
+      "n": 15,
+      "rho": 0.35,
+      "p": 0.1999480005199948
+    },
+    "dsse_focus": {
+      "label": "Model \u2212 lookup SSE, testing_20251124:007",
+      "kind": "model",
+      "n": 15,
+      "rho": 0.37857142857142856,
+      "p": 0.16656833431665682
+    },
+    "dsse_other": {
+      "label": "Model \u2212 lookup SSE, other identities",
+      "kind": "model",
+      "n": 15,
+      "rho": 0.5142857142857142,
+      "p": 0.05151948480515195
+    },
+    "largest_client_share": {
+      "label": "Largest client's share of training runs",
+      "kind": "partition",
+      "n": 15,
+      "rho": 0.44186117213770704,
+      "p": 0.0997090029099709
+    },
+    "client_run_cv": {
+      "label": "CV of client run counts",
+      "kind": "partition",
+      "n": 15,
+      "rho": 0.3321428571428571,
+      "p": 0.2269077309226908
+    },
+    "mean_identity_share_on_largest": {
+      "label": "Mean identity share on the largest client",
+      "kind": "partition",
+      "n": 15,
+      "rho": 0.3285714285714285,
+      "p": 0.23236767632323677
+    },
+    "focus_share_on_largest": {
+      "label": "testing_20251124:007: share on the largest client",
+      "kind": "partition",
+      "n": 15,
+      "rho": -0.40221615598388605,
+      "p": 0.13828861711382887
+    },
+    "focus_num_clients": {
+      "label": "testing_20251124:007: clients holding it",
+      "kind": "partition",
+      "n": 15,
+      "rho": 0.18976802881914737,
+      "p": 0.5100848991510085
+    },
+    "posthoc_isolated_identities": {
+      "label": "Identities all on one non-largest client (post hoc)",
+      "kind": "posthoc",
+      "n": 15,
+      "rho": 0.0797610317481012,
+      "p": 0.7757922420775792
+    }
+  },
+  "identity_share_vs_rmse": {
+    "share_on_largest:test_2:001": {
+      "n": 15,
+      "rho": 0.5193274320296263,
+      "p": 0.05015949840501595
+    },
+    "share_on_largest:test_2:002": {
+      "n": 15,
+      "rho": 0.5719984052622371,
+      "p": 0.02755972440275597
+    },
+    "share_on_largest:test_2:003": {
+      "n": 15,
+      "rho": 0.011002971203391538,
+      "p": 0.970690293097069
+    },
+    "share_on_largest:testing_20251124:003": {
+      "n": 15,
+      "rho": -0.33304423121105226,
+      "p": 0.22310776892231077
+    },
+    "share_on_largest:testing_20251124:004": {
+      "n": 15,
+      "rho": 0.16077250095321133,
+      "p": 0.5635243647563525
+    },
+    "share_on_largest:testing_20251124:005": {
+      "n": 15,
+      "rho": -0.050776656808137914,
+      "p": 0.8576514234857652
+    },
+    "share_on_largest:testing_20251124:007": {
+      "n": 15,
+      "rho": -0.40221615598388605,
+      "p": 0.13828861711382887
+    },
+    "share_on_largest:testing_20251124:008": {
+      "n": 15,
+      "rho": 0.42292393490789304,
+      "p": 0.11724882751172488
+    }
+  },
+  "init_controls": [
+    {
+      "alpha": 0.1,
+      "draw": 1,
+      "status_init4602": "completed",
+      "spread_runs_init4601": 0.1752280822891533,
+      "spread_runs_init4602": 0.7378646724960947,
+      "spread_saved_window_init4601": 0.19727018190043508,
+      "spread_saved_window_init4602": 0.8922015115567292,
+      "rmse_init4601": 0.03888369425119591,
+      "rmse_init4602": 0.03831434057207077,
+      "skill_init4601": 0.07933236797239984,
+      "skill_init4602": 0.10609668787232118,
+      "outcome_init4601": "trained",
+      "outcome_init4602": "trained"
+    },
+    {
+      "alpha": 0.3,
+      "draw": 1,
+      "status_init4602": "completed",
+      "spread_runs_init4601": 1.0043923032485318,
+      "spread_runs_init4602": 0.7645670825143316,
+      "spread_saved_window_init4601": 1.7718285080370004,
+      "spread_saved_window_init4602": 1.09081703339251,
+      "rmse_init4601": 0.045118495988739654,
+      "rmse_init4602": 0.03791493186667705,
+      "skill_init4601": -0.2395871458864285,
+      "skill_init4602": 0.12463657718252452,
+      "outcome_init4601": "trained",
+      "outcome_init4602": "trained"
+    }
+  ]
+}
